@@ -1,6 +1,7 @@
 import { requireAdmin } from "@/modules/auth/guards";
 import { getSettings } from "@/modules/admin/settings";
 import { StampSettingsForm } from "./StampSettingsForm";
+import { RoundingForm } from "./RoundingForm";
 
 export const metadata = { title: "Einstellungen" };
 
@@ -11,7 +12,8 @@ export default async function Einstellungen() {
     <div className="flex max-w-2xl flex-col gap-5">
       <h1 className="text-3xl font-extrabold">Einstellungen</h1>
       <StampSettingsForm s={s} />
-      <p className="text-sm">Weitere Einstellungen (Feiertage, Rundung, Mindestbesetzung, Abwesenheitsarten) folgen in den nächsten Meilensteinen.</p>
+      <RoundingForm value={s.roundingMinutes} />
+      <p className="text-sm">Feiertage und Betriebstage: Menüpunkt „Feiertage“. Mindestbesetzung und Abwesenheitsarten folgen in den nächsten Meilensteinen.</p>
     </div>
   );
 }

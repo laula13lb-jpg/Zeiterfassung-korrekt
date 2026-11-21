@@ -41,5 +41,12 @@ body {
     focus:border-blau-800 focus:outline-4 focus:outline-gelb-500/60;
 }
 @utility card {
-  @apply rounded-2xl bg-white p-5 shadow-sm ring-1 ring-blau-900/10;
+  @apply relative rounded-2xl bg-white p-5 shadow-sm ring-1 ring-blau-900/10;
+}
+
+/* Beschriftungen mit Eingabefeld darin als Block (verhindert überlappende Klickflächen) */
+@layer base {
+  label {
+    display: block;
+  }
 }

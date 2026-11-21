@@ -3,7 +3,7 @@
 Web-App (PWA) für Arbeitszeiterfassung, Urlaub und Krankmeldungen der
 Autoklinik Bludau (Bludau GmbH, Braunschweig).
 
-**Stand:** Meilenstein 2 (+ Änderungen) – Stempeln am Werkstatt-Terminal und im persönlichen Bereich, Tagesstatus, Pausenabzug, Anrechnung ab 06:00, keine Nachtschichten.
+**Stand:** Meilenstein 3 – Arbeitszeitmodelle, Feiertage Niedersachsen, Betriebstage, Zeitkonto mit Ampel, Korrekturanträge, Admin-Korrektur mit Änderungsprotokoll, Hinweise nach ArbZG.
 
 | Bereich | Technik |
 |---|---|

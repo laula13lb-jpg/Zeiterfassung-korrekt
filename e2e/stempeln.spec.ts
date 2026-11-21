@@ -120,7 +120,7 @@ test.describe("Persönlicher Modus", () => {
     await adminSession(page);
     await page.goto("/admin/einstellungen");
     await page.getByLabel(/Stempeln auch vom Handy\/PC erlauben/).check();
-    await page.getByRole("button", { name: "Speichern" }).click();
+    await page.getByRole("button", { name: "Speichern" }).first().click();
     await expect(page.getByText("Gespeichert.")).toBeVisible();
 
     const ctx = await browser.newContext({ ...test.info().project.use });
@@ -139,7 +139,7 @@ test.describe("Persönlicher Modus", () => {
 
     // Nur-Firmennetz: fremde IP wird abgewiesen (Testserver sieht 127.0.0.1 / ::1)
     await page.getByLabel(/Nur aus diesen Netzen/).fill("10.99.0.0/16");
-    await page.getByRole("button", { name: "Speichern" }).click();
+    await page.getByRole("button", { name: "Speichern" }).first().click();
     await expect(page.getByText("Gespeichert.")).toBeVisible();
     const ctx2 = await browser.newContext({ ...test.info().project.use });
     const p2 = await ctx2.newPage();
@@ -150,7 +150,7 @@ test.describe("Persönlicher Modus", () => {
     // zurücksetzen
     await page.getByLabel(/Nur aus diesen Netzen/).fill("");
     await page.getByLabel(/Stempeln auch vom Handy\/PC erlauben/).uncheck();
-    await page.getByRole("button", { name: "Speichern" }).click();
+    await page.getByRole("button", { name: "Speichern" }).first().click();
     await expect(page.getByText("Gespeichert.")).toBeVisible();
   });
 });

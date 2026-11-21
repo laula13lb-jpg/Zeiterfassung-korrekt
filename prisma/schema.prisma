@@ -4,7 +4,7 @@
 // - Alle Zeitstempel (DateTime) werden in UTC gespeichert. Kalendertage
 //   (Urlaub, Arbeitstag einer Buchung) als @db.Date im Sinne von Europe/Berlin.
 // - Originalbuchungen werden nie gelöscht. Korrekturen erzeugen eine neue
-//   Version; die alte wird über `supersededById` als überschrieben markiert.
+//   Version; die alte wird über `voidedAt` + `correctionId` als überschrieben markiert.
 // - Gesundheitsdaten: nur Zeitraum und Status (siehe SickLeave), keine
 //   Diagnosen, keine Dokumente.
 // - Erweiterungspunkte für das spätere Modul „Arbeitsaufträge“ sind mit
@@ -67,6 +67,8 @@ model Employee {
   status        EmployeeStatus @default(AKTIV)
   entryDate     DateTime       @db.Date
   exitDate      DateTime?      @db.Date
+  /// Beginn des Zeitkontos (Einführung der App); leer = Eintrittsdatum
+  timeAccountStart DateTime?   @db.Date
   /// optional für Benachrichtigungen per E-Mail
   email         String?
 
@@ -219,16 +221,15 @@ model TimeEntry {
   orderPosition   OrderPosition? @relation(fields: [orderPositionId], references: [id])
   productive      Boolean?
 
-  /// Versionierung: gesetzt, wenn dieser Eintrag durch eine Korrektur ersetzt wurde
-  supersededById String?    @unique
-  supersededBy   TimeEntry? @relation("EntryVersion", fields: [supersededById], references: [id])
-  supersedes     TimeEntry? @relation("EntryVersion")
-  /// Eintrag wurde ersatzlos storniert (bleibt erhalten)
+  /// Überschrieben-Markierung: gesetzt, wenn der Eintrag durch eine Korrektur ersetzt wurde (bleibt erhalten)
   voidedAt     DateTime?
+  /// Korrekturvorgang (gleiche ID wie im Audit-Log): ersetzte und neue Einträge gehören zusammen
+  correctionId String?
   createdAt    DateTime    @default(now())
 
   @@index([employeeId, workDate])
   @@index([employeeId, end])
+  @@index([correctionId])
 }
 
 enum WarningType {
@@ -289,8 +290,10 @@ model CorrectionRequest {
   employee       Employee      @relation("CorrectionEmployee", fields: [employeeId], references: [id])
   workDate       DateTime      @db.Date
   message        String
-  /// vorgeschlagene Zeiten, z. B. { "kommen": "07:00", "gehen": "17:30" }
+  /// vorgeschlagene Zeiten: { blocks: [{ kind: "ARBEIT"|"PAUSE", start: "07:00", end: "17:30" }] }
   proposed       Json?
+  /// Korrekturvorgang, mit dem der Antrag umgesetzt wurde
+  correctionId   String?
   status         RequestStatus @default(BEANTRAGT)
   decidedById    String?
   decidedBy      Employee?     @relation("CorrectionDecider", fields: [decidedById], references: [id])

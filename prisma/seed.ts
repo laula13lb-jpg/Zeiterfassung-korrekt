@@ -115,6 +115,7 @@ async function sampleTimes() {
   const emps = await db.employee.findMany({ where: { tracksTime: true, pinMustChange: false } });
   const today = new TZDate(Date.now(), "Europe/Berlin");
   let added = 0;
+  let firstDay: Date | null = null;
   for (let back = 1; added < 10 && back < 30; back++) {
     const d = new TZDate(today.getFullYear(), today.getMonth(), today.getDate() - back, 12, 0, 0, "Europe/Berlin");
     const wd = d.getDay();
@@ -122,6 +123,7 @@ async function sampleTimes() {
     added++;
     const [y, m, dd] = [d.getFullYear(), d.getMonth() + 1, d.getDate()];
     const workDate = new Date(Date.UTC(y, m - 1, dd));
+    firstDay = workDate;
     for (const [i, e] of emps.entries()) {
       const late = (i + back) % 4; // leichte Streuung
       const start = berlin(y, m, dd, 7, late);
@@ -147,6 +149,11 @@ async function sampleTimes() {
       }
     }
   }
+  // Zeitkonto beginnt mit den Beispieldaten
+  if (firstDay) await db.employee.updateMany({ where: { timeAccountStart: null, pinMustChange: false }, data: { timeAccountStart: firstDay } });
+  // neue Testperson: Zeitkonto beginnt heute
+  const t = new TZDate(Date.now(), "Europe/Berlin");
+  await db.employee.updateMany({ where: { timeAccountStart: null }, data: { timeAccountStart: new Date(Date.UTC(t.getFullYear(), t.getMonth(), t.getDate())) } });
 }
 
 /** Test-Terminal mit festem Freischaltcode TEST-2026 (nur Entwicklung) */

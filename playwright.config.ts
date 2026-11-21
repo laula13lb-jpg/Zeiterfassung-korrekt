@@ -9,7 +9,7 @@ export default defineConfig({
   workers: 1,
   timeout: 30_000,
   globalSetup: "./e2e/global-setup.ts",
-  use: { baseURL: `http://localhost:${PORT}`, trace: "off", locale: "de-DE", timezoneId: "Europe/Berlin" },
+  use: { baseURL: `http://localhost:${PORT}`, trace: "off", screenshot: "only-on-failure", locale: "de-DE", timezoneId: "Europe/Berlin" },
   projects: [
     { name: "smartphone", use: { ...devices["Pixel 7"] } },
     { name: "tablet-quer", use: { ...devices["Galaxy Tab S4 landscape"] } },

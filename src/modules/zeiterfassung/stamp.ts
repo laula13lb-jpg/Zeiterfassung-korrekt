@@ -3,6 +3,7 @@ import type { StampSource } from "@prisma/client";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { berlinDay, fmtDateTime } from "@/lib/time";
+import { evaluateDayWarnings } from "./warnings";
 import { isDuplicate, isStale, planStamp, statusFromOpen, type StampType, type Status } from "./rules";
 
 export interface StampInput {
@@ -36,7 +37,7 @@ export async function performStamp(input: StampInput): Promise<StampResult> {
     if (now.getTime() - at.getTime() > MAX_OFFLINE_AGE_H * 3600_000) return { ok: false, error: "Zeitstempel ist zu alt – bitte Korrekturantrag stellen." };
   }
 
-  return db.$transaction(async (tx) => {
+  const result: StampResult = await db.$transaction(async (tx) => {
     // Zeilensperre: parallele Stempelungen derselben Person nacheinander abarbeiten
     await tx.$queryRaw`SELECT id FROM "Employee" WHERE id = ${input.employeeId} FOR UPDATE`;
     const emp = await tx.employee.findUnique({ where: { id: input.employeeId } });
@@ -45,13 +46,13 @@ export async function performStamp(input: StampInput): Promise<StampResult> {
     if (input.clientId) {
       const prev = await tx.stampEvent.findUnique({ where: { clientId: input.clientId } });
       if (prev) {
-        const open = await tx.timeEntry.findFirst({ where: { employeeId: emp.id, end: null, supersededById: null, voidedAt: null } });
+        const open = await tx.timeEntry.findFirst({ where: { employeeId: emp.id, end: null, voidedAt: null } });
         return { ok: true as const, type: prev.type, at: prev.at, status: statusFromOpen(open), duplicate: true };
       }
     }
 
     let open = await tx.timeEntry.findFirst({
-      where: { employeeId: emp.id, end: null, supersededById: null, voidedAt: null },
+      where: { employeeId: emp.id, end: null, voidedAt: null },
       orderBy: { start: "desc" },
     });
     const lastEvent = await tx.stampEvent.findFirst({ where: { employeeId: emp.id }, orderBy: { at: "desc" } });
@@ -101,4 +102,9 @@ export async function performStamp(input: StampInput): Promise<StampResult> {
     });
     return { ok: true as const, type: input.type, at, status: plan.open === "PAUSE" ? "PAUSE" : plan.open === "ARBEIT" ? "ARBEIT" : "ABWESEND", autoClosedNotice };
   });
+  if (result.ok && !result.duplicate && (input.type === "GEHEN" || input.type === "KOMMEN")) {
+    // Hinweise nach ArbZG (Ruhezeit beim Kommen, Pausen/10 Std. beim Gehen)
+    await evaluateDayWarnings(input.employeeId, berlinDay(result.at)).catch(() => {});
+  }
+  return result;
 }

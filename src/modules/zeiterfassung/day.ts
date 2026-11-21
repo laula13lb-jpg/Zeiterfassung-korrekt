@@ -21,14 +21,14 @@ export interface DayView {
 export async function getDayView(employeeId: string, now = new Date()): Promise<DayView> {
   const settings = await getSettings();
   const open = await db.timeEntry.findFirst({
-    where: { employeeId, end: null, supersededById: null, voidedAt: null },
+    where: { employeeId, end: null, voidedAt: null },
     orderBy: { start: "desc" },
   });
   const today = berlinDay(now);
   const stale = isStale(open, today);
   const workDate = today;
   const entries = await db.timeEntry.findMany({
-    where: { employeeId, workDate, supersededById: null, voidedAt: null },
+    where: { employeeId, workDate, voidedAt: null },
     orderBy: { start: "asc" },
     select: { id: true, kind: true, start: true, end: true, origin: true, autoClosed: true },
   });

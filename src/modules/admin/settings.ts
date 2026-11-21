@@ -48,7 +48,7 @@ export const DEFAULT_SETTINGS: Settings = {
   stampFromPersonalDevices: false,
   stampAllowedIpRanges: [],
   missingBreakMode: "abzug",
-  breakRule: "gesetzlich",
+  breakRule: "betrieblich",
   companyBreakAfterMinutes: 360,
   companyBreakMinutes: 45,
   creditFromTime: "06:00",

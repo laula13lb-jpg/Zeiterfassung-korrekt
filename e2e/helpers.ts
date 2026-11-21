@@ -9,6 +9,7 @@ export async function loginEmployee(page: Page, name: string, pin = "4711") {
   await page.getByRole("button", { name, exact: true }).click();
   await enterPin(page, pin);
   await page.getByRole("button", { name: "Anmelden" }).click();
+  await page.waitForURL(/\/mein$|pin-aendern/);
 }
 
 export async function loginAdmin(page: Page, password: string) {

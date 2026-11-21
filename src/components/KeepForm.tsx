@@ -16,7 +16,8 @@ export function KeepForm({ action, children, className }: {
       className={className}
       onSubmit={(e) => {
         e.preventDefault();
-        const fd = new FormData(e.currentTarget);
+        // Absende-Knopf (name/value) mitsenden, z. B. „Genehmigen“/„Ablehnen“
+        const fd = new FormData(e.currentTarget, (e.nativeEvent as SubmitEvent).submitter);
         startTransition(() => action(fd));
       }}
     >
