@@ -1,0 +1,554 @@
+// Datenmodell – Zeiterfassung Autoklinik Bludau
+//
+// Grundsätze:
+// - Alle Zeitstempel (DateTime) werden in UTC gespeichert. Kalendertage
+//   (Urlaub, Arbeitstag einer Buchung) als @db.Date im Sinne von Europe/Berlin.
+// - Originalbuchungen werden nie gelöscht. Korrekturen erzeugen eine neue
+//   Version; die alte wird über `supersededById` als überschrieben markiert.
+// - Gesundheitsdaten: nur Zeitraum und Status (siehe SickLeave), keine
+//   Diagnosen, keine Dokumente.
+// - Erweiterungspunkte für das spätere Modul „Arbeitsaufträge“ sind mit
+//   [AUFTRAEGE] markiert.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────── Stammdaten ─────────────────────────────
+
+enum Role {
+  MITARBEITER
+  ABTEILUNGSLEITER
+  ADMIN
+}
+
+enum EmployeeStatus {
+  AKTIV
+  GESPERRT
+  AUSGETRETEN
+}
+
+model Department {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  sortOrder   Int      @default(0)
+  /// Mindestbesetzung (Personen anwesend) – nur Hinweis bei Urlaubsgenehmigung
+  minStaffing Int?
+  /// [AUFTRAEGE] Abteilung ist eine produktive Kostenstelle (AW-Soll/Ist)
+  productive  Boolean  @default(true)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  employees     Employee[]      @relation("EmployeeDepartment")
+  leads         Employee[]      @relation("DepartmentLeads")
+  timeEntries   TimeEntry[]
+  orderPositions OrderPosition[]
+}
+
+model Employee {
+  id            String         @id @default(cuid())
+  personnelNo   String         @unique
+  firstName     String
+  lastName      String
+  departmentId  String?
+  department    Department?    @relation("EmployeeDepartment", fields: [departmentId], references: [id])
+  /// Abteilungen, für die diese Person Abteilungsleiter ist
+  ledDepartments Department[]  @relation("DepartmentLeads")
+  roles         Role[]         @default([MITARBEITER])
+  /// false z. B. für reine Büro-Admin-Konten ohne Zeiterfassung
+  tracksTime    Boolean        @default(true)
+  status        EmployeeStatus @default(AKTIV)
+  entryDate     DateTime       @db.Date
+  exitDate      DateTime?      @db.Date
+  /// optional für Benachrichtigungen per E-Mail
+  email         String?
+
+  // ── Mitarbeiter-Anmeldung (PIN) ──
+  pinHash         String?
+  pinMustChange   Boolean   @default(true)
+  pinFailedCount  Int       @default(0)
+  pinLockedUntil  DateTime?
+  pinChangedAt    DateTime?
+
+  // ── Admin-Anmeldung (Benutzername + Passwort + optional TOTP) ──
+  loginName          String?   @unique
+  passwordHash       String?
+  passwordMustChange Boolean   @default(true)
+  pwFailedCount      Int       @default(0)
+  pwLockedUntil      DateTime?
+  /// verschlüsselt (AES-256-GCM, Schlüssel aus APP_SECRET)
+  totpSecretEnc      String?
+  totpEnabled        Boolean   @default(false)
+
+  /// gesetzt, wenn personenbezogene Daten nach Ablauf der Fristen anonymisiert wurden
+  anonymizedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  schedules          WorkSchedule[]
+  entitlements       VacationEntitlement[]
+  stampEvents        StampEvent[]
+  timeEntries        TimeEntry[]           @relation("TimeEntryEmployee")
+  absences           AbsenceRequest[]      @relation("AbsenceEmployee")
+  absencesDecided    AbsenceRequest[]      @relation("AbsenceDecider")
+  sickLeaves         SickLeave[]           @relation("SickEmployee")
+  sickLeavesCreated  SickLeave[]           @relation("SickCreator")
+  corrections        CorrectionRequest[]   @relation("CorrectionEmployee")
+  correctionsDecided CorrectionRequest[]   @relation("CorrectionDecider")
+  balanceAdjustments BalanceAdjustment[]   @relation("AdjustmentEmployee")
+  adjustmentsCreated BalanceAdjustment[]   @relation("AdjustmentCreator")
+  monthClosings      MonthClosing[]        @relation("ClosingEmployee")
+  notifications      Notification[]
+  sessions           Session[]
+  auditActor         AuditLog[]            @relation("AuditActor")
+  auditSubject       AuditLog[]            @relation("AuditSubject")
+  warnings           TimeWarning[]
+
+  @@index([status])
+}
+
+/// Arbeitszeitmodell, versioniert über validFrom (Änderungen gelten ab Datum)
+model WorkSchedule {
+  id            String   @id @default(cuid())
+  employeeId    String
+  employee      Employee @relation(fields: [employeeId], references: [id])
+  validFrom     DateTime @db.Date
+  /// Soll-Minuten pro Wochentag (0 = arbeitsfrei)
+  monMinutes    Int      @default(480)
+  tueMinutes    Int      @default(480)
+  wedMinutes    Int      @default(480)
+  thuMinutes    Int      @default(480)
+  friMinutes    Int      @default(420)
+  satMinutes    Int      @default(0)
+  sunMinutes    Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  @@unique([employeeId, validFrom])
+}
+
+/// Urlaubsanspruch pro Jahr (Tage, halbe Tage möglich)
+model VacationEntitlement {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  year       Int
+  days       Decimal  @db.Decimal(5, 1)
+  /// manueller Übertrag aus Vorjahr (überschreibt Berechnung, falls gesetzt)
+  carryOverOverride Decimal? @db.Decimal(5, 1)
+  note       String?
+  updatedAt  DateTime @updatedAt
+
+  @@unique([employeeId, year])
+}
+
+// ───────────────────────────── Zeiterfassung ─────────────────────────────
+
+enum StampType {
+  KOMMEN
+  PAUSE_START
+  PAUSE_ENDE
+  GEHEN
+}
+
+enum StampSource {
+  TERMINAL
+  PERSOENLICH
+  ADMIN
+}
+
+/// Rohes Stempelereignis – unveränderlicher Nachweis. Daraus werden TimeEntries gebildet.
+model StampEvent {
+  id          String      @id @default(cuid())
+  employeeId  String
+  employee    Employee    @relation(fields: [employeeId], references: [id])
+  type        StampType
+  /// Zeitpunkt der Stempelung (UTC); bei Offline-Erfassung der Original-Zeitstempel des Geräts
+  at          DateTime
+  receivedAt  DateTime    @default(now())
+  source      StampSource
+  offline     Boolean     @default(false)
+  /// Idempotenz-Schlüssel für Offline-Nachsynchronisation
+  clientId    String?     @unique
+  terminalId  String?
+  terminal    TerminalDevice? @relation(fields: [terminalId], references: [id])
+  ip          String?
+
+  @@index([employeeId, at])
+}
+
+enum EntryKind {
+  ARBEIT
+  PAUSE
+}
+
+enum EntryOrigin {
+  STEMPEL
+  OFFLINE
+  KORREKTUR
+  AUTO_PAUSE
+}
+
+/// Zeitintervall (Arbeit oder Pause). Offene Intervalle haben end = null.
+model TimeEntry {
+  id           String      @id @default(cuid())
+  employeeId   String
+  employee     Employee    @relation("TimeEntryEmployee", fields: [employeeId], references: [id])
+  kind         EntryKind
+  start        DateTime
+  end          DateTime?
+  /// Arbeitstag (Europe/Berlin) des Beginns – Schichten über Mitternacht zählen zum Starttag
+  workDate     DateTime    @db.Date
+  origin       EntryOrigin @default(STEMPEL)
+  /// Abteilung, in der gearbeitet wurde (Standard: Stammabteilung)
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  /// [AUFTRAEGE] Zeitbuchung auf Auftrag/Position, produktiv vs. unproduktiv
+  orderId         String?
+  order           Order?         @relation(fields: [orderId], references: [id])
+  orderPositionId String?
+  orderPosition   OrderPosition? @relation(fields: [orderPositionId], references: [id])
+  productive      Boolean?
+
+  /// Versionierung: gesetzt, wenn dieser Eintrag durch eine Korrektur ersetzt wurde
+  supersededById String?    @unique
+  supersededBy   TimeEntry? @relation("EntryVersion", fields: [supersededById], references: [id])
+  supersedes     TimeEntry? @relation("EntryVersion")
+  /// Eintrag wurde ersatzlos storniert (bleibt erhalten)
+  voidedAt     DateTime?
+  createdAt    DateTime    @default(now())
+
+  @@index([employeeId, workDate])
+  @@index([employeeId, end])
+}
+
+enum WarningType {
+  PAUSE_FEHLT
+  UEBER_10_STUNDEN
+  RUHEZEIT_UNTER_11
+  NICHT_AUSGESTEMPELT
+}
+
+/// Hinweise nach Arbeitszeitgesetz für den Admin
+model TimeWarning {
+  id           String      @id @default(cuid())
+  employeeId   String
+  employee     Employee    @relation(fields: [employeeId], references: [id])
+  workDate     DateTime    @db.Date
+  type         WarningType
+  details      String?
+  resolvedAt   DateTime?
+  resolvedById String?
+  createdAt    DateTime    @default(now())
+
+  @@unique([employeeId, workDate, type])
+}
+
+/// Saldo-Korrekturen, Freizeitausgleich, Auszahlung von Überstunden
+enum AdjustmentKind {
+  KORREKTUR
+  FREIZEITAUSGLEICH
+  AUSZAHLUNG
+  UEBERTRAG
+}
+
+model BalanceAdjustment {
+  id          String         @id @default(cuid())
+  employeeId  String
+  employee    Employee       @relation("AdjustmentEmployee", fields: [employeeId], references: [id])
+  date        DateTime       @db.Date
+  minutes     Int
+  kind        AdjustmentKind
+  reason      String
+  createdById String?
+  createdBy   Employee?      @relation("AdjustmentCreator", fields: [createdById], references: [id])
+  createdAt   DateTime       @default(now())
+}
+
+enum RequestStatus {
+  BEANTRAGT
+  GENEHMIGT
+  ABGELEHNT
+  STORNO_BEANTRAGT
+  STORNIERT
+}
+
+/// Korrekturantrag des Mitarbeiters („vergessen auszustempeln …“)
+model CorrectionRequest {
+  id             String        @id @default(cuid())
+  employeeId     String
+  employee       Employee      @relation("CorrectionEmployee", fields: [employeeId], references: [id])
+  workDate       DateTime      @db.Date
+  message        String
+  /// vorgeschlagene Zeiten, z. B. { "kommen": "07:00", "gehen": "17:30" }
+  proposed       Json?
+  status         RequestStatus @default(BEANTRAGT)
+  decidedById    String?
+  decidedBy      Employee?     @relation("CorrectionDecider", fields: [decidedById], references: [id])
+  decidedAt      DateTime?
+  decisionReason String?
+  createdAt      DateTime      @default(now())
+}
+
+/// Monatsabschluss pro Mitarbeiter
+model MonthClosing {
+  id                  String    @id @default(cuid())
+  employeeId          String
+  employee            Employee  @relation("ClosingEmployee", fields: [employeeId], references: [id])
+  year                Int
+  month               Int
+  closedAt            DateTime  @default(now())
+  closedById          String
+  /// Saldo-Stand am Monatsende (Minuten), eingefroren
+  balanceMinutes      Int
+  summary             Json
+  employeeConfirmedAt DateTime?
+  /// Wiedereröffnet (Änderung nach Abschluss mit erneuter Freigabe)
+  reopenedAt          DateTime?
+  reopenReason        String?
+
+  @@unique([employeeId, year, month])
+}
+
+// ───────────────────────────── Abwesenheit ─────────────────────────────
+
+enum AbsenceCategory {
+  URLAUB
+  SONDERURLAUB
+  UNBEZAHLT
+  FREIZEITAUSGLEICH
+  SONSTIGE
+}
+
+/// Abwesenheitsarten (Krankheit ist bewusst separat in SickLeave)
+model AbsenceType {
+  id              String          @id @default(cuid())
+  code            String          @unique
+  name            String
+  category        AbsenceCategory
+  /// Soll-Zeit wird gutgeschrieben (z. B. Urlaub, Sonderurlaub, Berufsschule)
+  creditsTarget   Boolean         @default(true)
+  /// zieht vom Urlaubsanspruch ab
+  deductsVacation Boolean         @default(false)
+  requiresApproval Boolean        @default(true)
+  color           String          @default("#1d4ed8")
+  system          Boolean         @default(false)
+  active          Boolean         @default(true)
+  requests        AbsenceRequest[]
+}
+
+model AbsenceRequest {
+  id             String        @id @default(cuid())
+  employeeId     String
+  employee       Employee      @relation("AbsenceEmployee", fields: [employeeId], references: [id])
+  typeId         String
+  type           AbsenceType   @relation(fields: [typeId], references: [id])
+  startDate      DateTime      @db.Date
+  endDate        DateTime      @db.Date
+  /// erster bzw. letzter Tag nur halb
+  halfDayStart   Boolean       @default(false)
+  halfDayEnd     Boolean       @default(false)
+  /// berechnete Arbeitstage (bei Antrag festgehalten)
+  days           Decimal       @db.Decimal(5, 1)
+  comment        String?
+  status         RequestStatus @default(BEANTRAGT)
+  decidedById    String?
+  decidedBy      Employee?     @relation("AbsenceDecider", fields: [decidedById], references: [id])
+  decidedAt      DateTime?
+  decisionReason String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([employeeId, startDate])
+  @@index([status])
+}
+
+/// Krankmeldung – NUR Zeitraum und Status. Keine Diagnosen, keine Dokumente.
+/// Sichtbar nur für Admin und die betroffene Person.
+model SickLeave {
+  id            String    @id @default(cuid())
+  employeeId    String
+  employee      Employee  @relation("SickEmployee", fields: [employeeId], references: [id])
+  startDate     DateTime  @db.Date
+  /// voraussichtliches Ende (verlängerbar)
+  endDate       DateTime  @db.Date
+  /// AU liegt vor / eAU abgerufen
+  auPresent     Boolean   @default(false)
+  eauRetrieved  Boolean   @default(false)
+  childSick     Boolean   @default(false)
+  createdById   String?
+  createdBy     Employee? @relation("SickCreator", fields: [createdById], references: [id])
+  cancelledAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([employeeId, startDate])
+}
+
+/// Betriebstage: halbe Tage (Heiligabend/Silvester), Betriebsferien, zusätzliche freie Tage
+enum CompanyDayKind {
+  HALBER_TAG
+  BETRIEBSFERIEN
+  FREIER_TAG
+}
+
+model CompanyDay {
+  id     String         @id @default(cuid())
+  date   DateTime       @unique @db.Date
+  kind   CompanyDayKind
+  name   String
+  /// Anteil der normalen Soll-Zeit (0.5 = halber Tag, 0 = frei)
+  targetFactor Decimal  @default(0) @db.Decimal(3, 2)
+  /// Betriebsferien: wird als Urlaub verrechnet
+  countsAsVacation Boolean @default(false)
+}
+
+// ───────────────────────────── System ─────────────────────────────
+
+/// Einstellungen als Schlüssel/Wert (JSON), typisiert in src/modules/admin/settings.ts
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+}
+
+enum SessionKind {
+  MITARBEITER
+  ADMIN
+}
+
+model Session {
+  id           String      @id @default(cuid())
+  /// SHA-256 des Cookie-Tokens (das Token selbst wird nie gespeichert)
+  tokenHash    String      @unique
+  employeeId   String
+  employee     Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  kind         SessionKind
+  /// Admin: Passwort ok, aber TOTP noch ausstehend
+  pending2fa   Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+  lastActiveAt DateTime    @default(now())
+  expiresAt    DateTime
+  ip           String?
+  userAgent    String?
+
+  @@index([employeeId])
+}
+
+/// Fest installiertes Terminal-Tablet, vom Admin freigeschaltet
+model TerminalDevice {
+  id            String    @id @default(cuid())
+  name          String
+  tokenHash     String?   @unique
+  /// einmaliger Freischaltcode (gehasht), bis das Gerät aktiviert ist
+  activationCodeHash String?
+  activationExpiresAt DateTime?
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  lastSeenAt    DateTime?
+  stampEvents   StampEvent[]
+}
+
+enum LoginKind {
+  PIN
+  PASSWORT
+  TOTP
+  TERMINAL_PIN
+}
+
+model LoginAttempt {
+  id         String    @id @default(cuid())
+  at         DateTime  @default(now())
+  kind       LoginKind
+  employeeId String?
+  /// eingegebener Benutzername/Personalnummer (nur bei unbekanntem Konto)
+  identifier String?
+  ip         String?
+  success    Boolean
+  reason     String?
+
+  @@index([at])
+}
+
+/// Lückenloses Änderungsprotokoll
+model AuditLog {
+  id          String    @id @default(cuid())
+  at          DateTime  @default(now())
+  actorId     String?
+  actor       Employee? @relation("AuditActor", fields: [actorId], references: [id])
+  /// z. B. "time.correct", "absence.approve", "employee.update"
+  action      String
+  entityType  String
+  entityId    String?
+  /// betroffene Person – der Mitarbeiter sieht Änderungen an seinen eigenen Daten
+  subjectId   String?
+  subject     Employee? @relation("AuditSubject", fields: [subjectId], references: [id])
+  before      Json?
+  after       Json?
+  reason      String?
+  ip          String?
+
+  @@index([subjectId, at])
+  @@index([entityType, entityId])
+}
+
+model Notification {
+  id         String    @id @default(cuid())
+  employeeId String
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  title      String
+  body       String?
+  link       String?
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([employeeId, readAt])
+}
+
+// ─────────────── [AUFTRAEGE] Platzhalter – noch nicht in Benutzung ───────────────
+// Siehe docs/modul-auftraege.md
+
+enum OrderStatus {
+  OFFEN
+  IN_ARBEIT
+  FERTIG
+  ABGERECHNET
+}
+
+model Order {
+  id           String      @id @default(cuid())
+  /// Referenz in Audatex Carisma (Auftrags-/Rechnungsnummer)
+  externalRef  String?     @unique
+  source       String      @default("manuell")
+  title        String
+  /// z. B. Kennzeichen – nur was für die Werkstatt nötig ist
+  vehicleRef   String?
+  status       OrderStatus @default(OFFEN)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  positions    OrderPosition[]
+  timeEntries  TimeEntry[]
+}
+
+/// Auftragsposition mit verkauften Arbeitswerten (AW), frei einer Abteilung zugeordnet
+/// (Lack-AW können so beliebig auf Vorarbeit/Lackierung/Finish aufgeteilt werden)
+model OrderPosition {
+  id           String      @id @default(cuid())
+  orderId      String
+  order        Order       @relation(fields: [orderId], references: [id])
+  departmentId String
+  department   Department  @relation(fields: [departmentId], references: [id])
+  description  String
+  soldAw       Decimal     @db.Decimal(8, 1)
+  /// Herkunft: Position aus Carisma, oder Aufteilung einer anderen Position
+  splitFromId  String?
+  timeEntries  TimeEntry[]
+}
