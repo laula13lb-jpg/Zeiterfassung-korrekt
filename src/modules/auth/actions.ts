@@ -13,6 +13,7 @@ import { validatePassword, validatePin } from "./pin-policy";
 import { createSession, destroyAllSessions, destroySession, getSession, markSession2faDone } from "./session";
 import { requireAdmin, requireEmployee } from "./guards";
 import { getSettings } from "@/modules/admin/settings";
+import { checkPin } from "./pin-check";
 
 export type FormState = { error?: string; ok?: string } | undefined;
 
@@ -24,46 +25,18 @@ const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 
 export async function loginWithPin(_prev: FormState, fd: FormData): Promise<FormState> {
   const ip = await clientIp();
-  const rlKey = `pin:${ip}`;
-  if (isRateLimited(rlKey, LIMITS.pinPerIp.max, LIMITS.pinPerIp.windowMs)) {
-    return { error: "Zu viele Fehlversuche von diesem Gerät. Bitte in einigen Minuten erneut versuchen." };
-  }
   const employeeId = str(fd, "employeeId");
   const personnelNo = str(fd, "personnelNo");
   const pin = str(fd, "pin");
-
   const emp = employeeId
     ? await db.employee.findUnique({ where: { id: employeeId } })
     : personnelNo
       ? await db.employee.findUnique({ where: { personnelNo } })
       : null;
-
-  if (!emp || emp.status !== "AKTIV" || !emp.pinHash) {
-    await verifySecret(null, pin);
-    registerFailure(rlKey, LIMITS.pinPerIp.windowMs);
-    await db.loginAttempt.create({ data: { kind: "PIN", identifier: personnelNo || employeeId, ip, success: false, reason: "unbekannt/inaktiv" } });
-    return { error: "Anmeldung nicht möglich. Personalnummer oder PIN prüfen." };
-  }
-
-  const state = { failedCount: emp.pinFailedCount, lockedUntil: emp.pinLockedUntil };
-  if (isLocked(state)) {
-    await db.loginAttempt.create({ data: { kind: "PIN", employeeId: emp.id, ip, success: false, reason: "gesperrt" } });
-    return { error: `Zu viele Fehlversuche. Gesperrt für noch ${remainingLockMinutes(state)} Min.` };
-  }
-
-  if (!(await verifySecret(emp.pinHash, pin))) {
-    const next = afterFailure(state);
-    await db.employee.update({ where: { id: emp.id }, data: { pinFailedCount: next.failedCount, pinLockedUntil: next.lockedUntil } });
-    await db.loginAttempt.create({ data: { kind: "PIN", employeeId: emp.id, ip, success: false, reason: "PIN falsch" } });
-    registerFailure(rlKey, LIMITS.pinPerIp.windowMs);
-    if (next.lockedUntil) return { error: `PIN falsch. Zu viele Fehlversuche – für ${remainingLockMinutes(next)} Min. gesperrt.` };
-    return { error: `PIN falsch. Noch ${5 - next.failedCount} Versuch(e).` };
-  }
-
-  await db.employee.update({ where: { id: emp.id }, data: { pinFailedCount: 0, pinLockedUntil: null } });
-  await db.loginAttempt.create({ data: { kind: "PIN", employeeId: emp.id, ip, success: true } });
-  await createSession(emp.id, "MITARBEITER");
-  redirect(emp.pinMustChange ? "/anmelden/pin-aendern" : "/mein");
+  const res = await checkPin(emp, pin, { ip, kind: "PIN", identifier: personnelNo || employeeId });
+  if (!res.ok) return { error: res.error };
+  await createSession(res.employee.id, "MITARBEITER");
+  redirect(res.employee.pinMustChange ? "/anmelden/pin-aendern" : "/mein");
 }
 
 export async function changePin(_prev: FormState, fd: FormData): Promise<FormState> {

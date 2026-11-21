@@ -141,6 +141,7 @@ CREATE TABLE "TimeEntry" (
     "end" TIMESTAMP(3),
     "workDate" DATE NOT NULL,
     "origin" "EntryOrigin" NOT NULL DEFAULT 'STEMPEL',
+    "autoClosed" BOOLEAN NOT NULL DEFAULT false,
     "departmentId" TEXT,
     "orderId" TEXT,
     "orderPositionId" TEXT,
@@ -383,6 +384,7 @@ CREATE TABLE "OrderPosition" (
     "orderId" TEXT NOT NULL,
     "departmentId" TEXT NOT NULL,
     "description" TEXT NOT NULL,
+    "workArea" TEXT,
     "soldAw" DECIMAL(8,1) NOT NULL,
     "splitFromId" TEXT,
 

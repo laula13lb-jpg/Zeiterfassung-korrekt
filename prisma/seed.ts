@@ -8,6 +8,8 @@
  */
 import { PrismaClient, type Role } from "@prisma/client";
 import { hash } from "@node-rs/argon2";
+import { createHash } from "node:crypto";
+import { TZDate } from "@date-fns/tz";
 
 const db = new PrismaClient();
 const OPTS = { memoryCost: 19456, timeCost: 2, parallelism: 1 } as const;
@@ -17,10 +19,8 @@ export const DEMO_ADMIN_PASSWORD = "Werkstatt-Start-2026!";
 
 const DEPARTMENTS = [
   { name: "Karosserie (inkl. Mechanik)", sortOrder: 1, minStaffing: 1 },
-  { name: "Vorarbeit", sortOrder: 2, minStaffing: 1 },
-  { name: "Lackierung", sortOrder: 3, minStaffing: 1 },
-  { name: "Finish", sortOrder: 4, minStaffing: 1 },
-  { name: "Büro/Verwaltung", sortOrder: 5, minStaffing: 1, productive: false },
+  { name: "Lack", sortOrder: 2, minStaffing: 1 },
+  { name: "Büro/Verwaltung", sortOrder: 3, minStaffing: 1, productive: false },
 ];
 
 const ABSENCE_TYPES = [
@@ -34,15 +34,15 @@ const ABSENCE_TYPES = [
 
 type P = { no: string; first: string; last: string; dept: number; roles?: Role[]; login?: string; mustChange?: boolean; part?: boolean; entry?: string };
 const PEOPLE: P[] = [
-  { no: "1001", first: "Sabine", last: "Bludau", dept: 4, roles: ["MITARBEITER", "ADMIN"], login: "admin" },
-  { no: "1002", first: "Thomas", last: "Krüger", dept: 2, roles: ["MITARBEITER", "ABTEILUNGSLEITER"] },
+  { no: "1001", first: "Sabine", last: "Bludau", dept: 2, roles: ["MITARBEITER", "ADMIN"], login: "admin" },
+  { no: "1002", first: "Thomas", last: "Krüger", dept: 1, roles: ["MITARBEITER", "ABTEILUNGSLEITER"] },
   { no: "1003", first: "Max", last: "Becker", dept: 0 },
   { no: "1004", first: "Jonas", last: "Wolf", dept: 0 },
-  { no: "1005", first: "Ali", last: "Yılmaz", dept: 1 },
-  { no: "1006", first: "Lena", last: "Hoffmann", dept: 1, part: true },
-  { no: "1007", first: "Piotr", last: "Nowak", dept: 2 },
-  { no: "1008", first: "Kevin", last: "Schulz", dept: 3, entry: "2026-04-01" },
-  { no: "1009", first: "Marco", last: "Richter", dept: 3 },
+  { no: "1005", first: "Ali", last: "Yılmaz", dept: 0 },
+  { no: "1006", first: "Lena", last: "Hoffmann", dept: 2, part: true },
+  { no: "1007", first: "Piotr", last: "Nowak", dept: 1 },
+  { no: "1008", first: "Kevin", last: "Schulz", dept: 1, entry: "2026-04-01" },
+  { no: "1009", first: "Marco", last: "Richter", dept: 1 },
   { no: "1010", first: "Neu", last: "Testperson", dept: 0, mustChange: true },
 ];
 
@@ -106,16 +106,74 @@ async function demo(depts: Awaited<ReturnType<typeof base>>) {
   }
 }
 
+/** Berliner Ortszeit → Date (UTC) */
+const berlin = (y: number, m: number, d: number, hh: number, mm: number) => new Date(new TZDate(y, m - 1, d, hh, mm, 0, "Europe/Berlin").getTime());
+
+/** Beispielzeiten der letzten 10 Arbeitstage (ohne heute) */
+async function sampleTimes() {
+  if ((await db.timeEntry.count()) > 0) return;
+  const emps = await db.employee.findMany({ where: { tracksTime: true, pinMustChange: false } });
+  const today = new TZDate(Date.now(), "Europe/Berlin");
+  let added = 0;
+  for (let back = 1; added < 10 && back < 30; back++) {
+    const d = new TZDate(today.getFullYear(), today.getMonth(), today.getDate() - back, 12, 0, 0, "Europe/Berlin");
+    const wd = d.getDay();
+    if (wd === 0 || wd === 6) continue;
+    added++;
+    const [y, m, dd] = [d.getFullYear(), d.getMonth() + 1, d.getDate()];
+    const workDate = new Date(Date.UTC(y, m - 1, dd));
+    for (const [i, e] of emps.entries()) {
+      const late = (i + back) % 4; // leichte Streuung
+      const start = berlin(y, m, dd, 7, late);
+      const endH = wd === 5 ? 14 : 15;
+      const endM = 45 + ((i * 7 + back) % 15);
+      // ein Beispieltag ohne Pause (für Pausenhinweis)
+      const noBreak = i === 2 && back === 3;
+      const blocks: [string, Date, Date][] = noBreak
+        ? [["ARBEIT", start, berlin(y, m, dd, 15, 30)]]
+        : [
+            ["ARBEIT", start, berlin(y, m, dd, 9, 0)],
+            ["PAUSE", berlin(y, m, dd, 9, 0), berlin(y, m, dd, 9, 20)],
+            ["ARBEIT", berlin(y, m, dd, 9, 20), berlin(y, m, dd, 12, 30)],
+            ["PAUSE", berlin(y, m, dd, 12, 30), berlin(y, m, dd, 12, 55)],
+            ["ARBEIT", berlin(y, m, dd, 12, 55), berlin(y, m, dd, endH, endM)],
+          ];
+      for (const [kind, s0, e0] of blocks) {
+        await db.timeEntry.create({ data: { employeeId: e.id, kind: kind as "ARBEIT" | "PAUSE", start: s0, end: e0, workDate, departmentId: e.departmentId } });
+      }
+      const ev = noBreak ? [["KOMMEN", start], ["GEHEN", blocks[0]![2]]] : [["KOMMEN", start], ["PAUSE_START", blocks[1]![1]], ["PAUSE_ENDE", blocks[1]![2]], ["PAUSE_START", blocks[3]![1]], ["PAUSE_ENDE", blocks[3]![2]], ["GEHEN", blocks[4]![2]]];
+      for (const [type, at] of ev) {
+        await db.stampEvent.create({ data: { employeeId: e.id, type: type as "KOMMEN", at: at as Date, source: "TERMINAL" } });
+      }
+    }
+  }
+}
+
+/** Test-Terminal mit festem Freischaltcode TEST-2026 (nur Entwicklung) */
+async function testTerminal() {
+  if (await db.terminalDevice.count()) return;
+  await db.terminalDevice.create({
+    data: {
+      name: "Werkstatt-Tablet (Test)",
+      activationCodeHash: createHash("sha256").update("TEST-2026").digest("hex"),
+      activationExpiresAt: new Date(Date.now() + 365 * 24 * 3600_000),
+    },
+  });
+}
+
 async function main() {
   if (process.env.NODE_ENV === "production" && !process.env.SEED_FORCE) {
     throw new Error("Seed mit Testdaten in Produktion verweigert.");
   }
   const depts = await base();
   await demo(depts);
+  await sampleTimes();
+  await testTerminal();
   console.log(`Testdaten angelegt.
   Mitarbeiter-PIN (alle):  ${DEMO_PIN}   (Personalnummer 1010 „Neu Testperson“: Start-PIN 5308, muss geändert werden)
   Admin:                   Benutzer "admin" / Passwort "${DEMO_ADMIN_PASSWORD}" (muss beim ersten Login geändert werden)
-  Abteilungsleiter:        Thomas Krüger (Lackierung), Personalnummer 1002`);
+  Abteilungsleiter:        Thomas Krüger (Lack), Personalnummer 1002
+  Terminal-Freischaltcode: TEST-2026`);
 }
 
 main()

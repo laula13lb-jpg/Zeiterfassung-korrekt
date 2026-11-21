@@ -3,7 +3,7 @@
 Web-App (PWA) für Arbeitszeiterfassung, Urlaub und Krankmeldungen der
 Autoklinik Bludau (Bludau GmbH, Braunschweig).
 
-**Stand:** Meilenstein 1 – Projektgerüst, Datenbankmodell, Anmeldung (PIN / Admin mit 2FA), Rollen, Docker.
+**Stand:** Meilenstein 2 – Stempeln am Werkstatt-Terminal und im persönlichen Bereich, Tagesstatus, Pausenregeln (§4 ArbZG).
 
 | Bereich | Technik |
 |---|---|
@@ -78,8 +78,9 @@ npm run dev                   # http://localhost:3000
 |---|---|
 | alle Mitarbeiter | Name antippen, PIN **4711** |
 | „Neu Testperson“ (1010) | Start-PIN **5308** → muss beim ersten Login geändert werden |
-| Abteilungsleiter Lackierung | Thomas Krüger (1002) |
+| Abteilungsleiter Lack | Thomas Krüger (1002) |
 | Admin | Benutzer **admin**, Passwort **Werkstatt-Start-2026!** → muss beim ersten Login geändert werden |
+| Terminal | http://localhost:3000/terminal → Freischaltcode **TEST-2026** |
 
 ### Tests
 

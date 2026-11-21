@@ -24,7 +24,8 @@ export function adminNav(): NavItem[] {
     { href: "/admin/abwesenheiten", label: "Abwesenheiten", soon: true },
     { href: "/admin/auswertung", label: "Monatsabschluss & Export", soon: true },
     { href: "/admin/auftraege", label: "Aufträge", soon: true },
-    { href: "/admin/einstellungen", label: "Einstellungen", soon: true },
+    { href: "/admin/terminals", label: "Terminals" },
+    { href: "/admin/einstellungen", label: "Einstellungen" },
     { href: "/admin/sicherheit", label: "Mein Zugang (2FA)" },
   ];
 }

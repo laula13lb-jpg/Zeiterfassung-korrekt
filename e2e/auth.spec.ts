@@ -121,4 +121,10 @@ test("Admin: 2FA einrichten und damit anmelden", async ({ page }, info) => {
   await page.getByLabel("Bestätigungscode").fill(authenticator.generate(secret));
   await page.getByRole("button", { name: "Bestätigen" }).click();
   await expect(page).toHaveURL(/\/admin$/);
+
+  // für die weiteren Tests wieder abschalten
+  await page.goto("/admin/sicherheit");
+  await page.getByLabel("Zum Abschalten Passwort eingeben").fill("Lack-trocknet-um-7!");
+  await page.getByRole("button", { name: "2FA abschalten" }).click();
+  await expect(page.getByText("wurde abgeschaltet")).toBeVisible();
 });

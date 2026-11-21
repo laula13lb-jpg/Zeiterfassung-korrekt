@@ -206,6 +206,8 @@ model TimeEntry {
   /// Arbeitstag (Europe/Berlin) des Beginns – Schichten über Mitternacht zählen zum Starttag
   workDate     DateTime    @db.Date
   origin       EntryOrigin @default(STEMPEL)
+  /// automatisch geschlossen, weil nicht ausgestempelt wurde (Dauer 0 – Korrektur nötig)
+  autoClosed   Boolean     @default(false)
   /// Abteilung, in der gearbeitet wurde (Standard: Stammabteilung)
   departmentId String?
   department   Department? @relation(fields: [departmentId], references: [id])
@@ -538,8 +540,9 @@ model Order {
   timeEntries  TimeEntry[]
 }
 
-/// Auftragsposition mit verkauften Arbeitswerten (AW), frei einer Abteilung zugeordnet
-/// (Lack-AW können so beliebig auf Vorarbeit/Lackierung/Finish aufgeteilt werden)
+/// Auftragsposition mit verkauften Arbeitswerten (AW), frei einer Abteilung zugeordnet.
+/// Innerhalb der Abteilung Lack können die AW zusätzlich frei auf Arbeitsbereiche
+/// (Vorarbeit / Lackierung / Finish) aufgeteilt werden → workArea.
 model OrderPosition {
   id           String      @id @default(cuid())
   orderId      String
@@ -547,6 +550,8 @@ model OrderPosition {
   departmentId String
   department   Department  @relation(fields: [departmentId], references: [id])
   description  String
+  /// [AUFTRAEGE] Arbeitsbereich innerhalb der Abteilung, z. B. "Vorarbeit", "Lackierung", "Finish"
+  workArea     String?
   soldAw       Decimal     @db.Decimal(8, 1)
   /// Herkunft: Position aus Carisma, oder Aufteilung einer anderen Position
   splitFromId  String?

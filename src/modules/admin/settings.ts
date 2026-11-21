@@ -13,8 +13,10 @@ export interface Settings {
   missingBreakMode: "hinweis" | "abzug";
   /** Rundung in Minuten (0 = keine) */
   roundingMinutes: number;
-  /** Uhrzeit, ab der eine offene Buchung als „vergessen auszustempeln“ gilt */
+  /** Uhrzeit, ab der eine offene Buchung als „vergessen auszustempeln“ gilt (Hinweis an Admin) */
   forgotClockOutTime: string;
+  /** Offene Buchung älter als so viele Stunden → beim nächsten Stempeln automatisch geschlossen (Dauer 0, Korrektur nötig) */
+  maxShiftHours: number;
   /** Standard-Urlaubsanspruch (Tage/Jahr bei 5-Tage-Woche) */
   defaultVacationDays: number;
   /** Verfall Resturlaub Vorjahr (MM-TT) */
@@ -40,6 +42,7 @@ export const DEFAULT_SETTINGS: Settings = {
   missingBreakMode: "hinweis",
   roundingMinutes: 0,
   forgotClockOutTime: "22:00",
+  maxShiftHours: 16,
   defaultVacationDays: 30,
   carryOverExpiry: "03-31",
   carryOverWarnDays: 60,

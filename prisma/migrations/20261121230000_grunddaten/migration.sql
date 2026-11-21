@@ -1,10 +1,8 @@
 -- Grunddaten: Abteilungen und Abwesenheitsarten (im Admin-Bereich änderbar)
 INSERT INTO "Department" ("id","name","sortOrder","minStaffing","productive","active","createdAt","updatedAt") VALUES
   ('dep_karosserie','Karosserie (inkl. Mechanik)',1,1,true,true,now(),now()),
-  ('dep_vorarbeit','Vorarbeit',2,1,true,true,now(),now()),
-  ('dep_lackierung','Lackierung',3,1,true,true,now(),now()),
-  ('dep_finish','Finish',4,1,true,true,now(),now()),
-  ('dep_buero','Büro/Verwaltung',5,1,false,true,now(),now())
+  ('dep_lack','Lack',2,1,true,true,now(),now()),
+  ('dep_buero','Büro/Verwaltung',3,1,false,true,now(),now())
 ON CONFLICT ("name") DO NOTHING;
 
 INSERT INTO "AbsenceType" ("id","code","name","category","creditsTarget","deductsVacation","requiresApproval","color","system","active") VALUES
