@@ -27,6 +27,12 @@ export function berlinDay(d: Date | number = new Date()): Date {
   return new Date(Date.UTC(z.getFullYear(), z.getMonth(), z.getDate()));
 }
 
+/** Uhrzeit "HH:MM" (Berliner Ortszeit) an einem Kalendertag (@db.Date) als UTC-Zeitpunkt */
+export function berlinTimeOn(day: Date, hhmm: string): Date {
+  const [h, m] = hhmm.split(":").map(Number);
+  return new Date(new TZDate(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), h ?? 0, m ?? 0, 0, TZ).getTime());
+}
+
 /** "YYYY-MM-DD" eines @db.Date-Werts */
 export function dayKey(day: Date): string {
   return day.toISOString().slice(0, 10);

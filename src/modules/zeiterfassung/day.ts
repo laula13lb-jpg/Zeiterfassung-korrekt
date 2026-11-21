@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { berlinDay } from "@/lib/time";
-import { getSettings } from "@/modules/admin/settings";
+import { getSettings, summaryOptionsFor } from "@/modules/admin/settings";
 import { allowedStamps, isStale, statusFromOpen, summarizeDay, type DaySummary, type StampType, type Status } from "./rules";
 
 export interface DayView {
@@ -24,14 +24,15 @@ export async function getDayView(employeeId: string, now = new Date()): Promise<
     where: { employeeId, end: null, supersededById: null, voidedAt: null },
     orderBy: { start: "desc" },
   });
-  const stale = isStale(open, now, settings.maxShiftHours);
-  const workDate = open && !stale ? open.workDate : berlinDay(now);
+  const today = berlinDay(now);
+  const stale = isStale(open, today);
+  const workDate = today;
   const entries = await db.timeEntry.findMany({
     where: { employeeId, workDate, supersededById: null, voidedAt: null },
     orderBy: { start: "asc" },
     select: { id: true, kind: true, start: true, end: true, origin: true, autoClosed: true },
   });
-  const summary = summarizeDay(stale ? entries.filter((e) => e.end) : entries, { now, mode: settings.missingBreakMode });
+  const summary = summarizeDay(entries, { now, ...summaryOptionsFor(settings, workDate) });
   const status = stale ? "ABWESEND" : statusFromOpen(open);
   const shiftEntries = entries.filter((e) => e.kind === "ARBEIT");
   // Schichtbeginn = Beginn des letzten zusammenhängenden Blocks (nach letztem „Gehen“)

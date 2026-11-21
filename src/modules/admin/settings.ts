@@ -1,4 +1,6 @@
 import { db } from "@/lib/db";
+import { berlinTimeOn } from "@/lib/time";
+import type { BreakRule } from "@/modules/zeiterfassung/rules";
 
 /**
  * Typisierte App-Einstellungen mit Standardwerten.
@@ -9,14 +11,20 @@ export interface Settings {
   stampFromPersonalDevices: boolean;
   /** Wenn gesetzt: persönliches Stempeln nur aus diesen IP-Bereichen (CIDR), z. B. Firmen-WLAN */
   stampAllowedIpRanges: string[];
-  /** Fehlende Pause nach §4 ArbZG: "hinweis" = nur markieren, "abzug" = automatisch abziehen (gekennzeichnet) */
+  /** Nicht gestempelte Pause: "abzug" = automatisch abziehen (gekennzeichnet), "hinweis" = nur markieren */
   missingBreakMode: "hinweis" | "abzug";
+  /** Pausenregel: gesetzlich (30 Min. ab 6 Std., 45 Min. ab 9 Std.) oder betrieblich */
+  breakRule: "gesetzlich" | "betrieblich";
+  /** betriebliche Pausenregel: ab so vielen Minuten Arbeit … */
+  companyBreakAfterMinutes: number;
+  /** … so viele Minuten Pause (nie weniger als gesetzlich) */
+  companyBreakMinutes: number;
+  /** Arbeitszeit wird erst ab dieser Uhrzeit gutgeschrieben (davor: keine Arbeitszeit/Überstunde), leer = ab Kommen */
+  creditFromTime: string;
   /** Rundung in Minuten (0 = keine) */
   roundingMinutes: number;
   /** Uhrzeit, ab der eine offene Buchung als „vergessen auszustempeln“ gilt (Hinweis an Admin) */
   forgotClockOutTime: string;
-  /** Offene Buchung älter als so viele Stunden → beim nächsten Stempeln automatisch geschlossen (Dauer 0, Korrektur nötig) */
-  maxShiftHours: number;
   /** Standard-Urlaubsanspruch (Tage/Jahr bei 5-Tage-Woche) */
   defaultVacationDays: number;
   /** Verfall Resturlaub Vorjahr (MM-TT) */
@@ -39,10 +47,13 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   stampFromPersonalDevices: false,
   stampAllowedIpRanges: [],
-  missingBreakMode: "hinweis",
+  missingBreakMode: "abzug",
+  breakRule: "gesetzlich",
+  companyBreakAfterMinutes: 360,
+  companyBreakMinutes: 45,
+  creditFromTime: "06:00",
   roundingMinutes: 0,
   forgotClockOutTime: "22:00",
-  maxShiftHours: 16,
   defaultVacationDays: 30,
   carryOverExpiry: "03-31",
   carryOverWarnDays: 60,
@@ -67,4 +78,20 @@ export async function setSetting<K extends keyof Settings>(key: K, value: Settin
     create: { key, value: value as never, updatedBy: by },
     update: { value: value as never, updatedBy: by },
   });
+}
+
+/** Pausenregel aus den Einstellungen */
+export function breakRuleOf(s: Settings): BreakRule {
+  return s.breakRule === "betrieblich"
+    ? { kind: "betrieblich", afterMinutes: s.companyBreakAfterMinutes, breakMinutes: s.companyBreakMinutes }
+    : { kind: "gesetzlich" };
+}
+
+/** Optionen für die Tageszusammenfassung eines Arbeitstags */
+export function summaryOptionsFor(s: Settings, workDate: Date) {
+  return {
+    mode: s.missingBreakMode,
+    breakRule: breakRuleOf(s),
+    creditFrom: s.creditFromTime ? berlinTimeOn(workDate, s.creditFromTime) : null,
+  };
 }

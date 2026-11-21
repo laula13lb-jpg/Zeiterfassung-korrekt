@@ -19,7 +19,8 @@ export type TerminalPerson = {
   since: string | null;
   workMinutes: number;
   breakMinutes: number;
-  missingBreakMinutes: number;
+  deductedMinutes: number;
+  staleNotice: string | null;
 };
 
 export async function activateTerminal(_prev: { error?: string } | undefined, fd: FormData): Promise<{ error?: string } | undefined> {
@@ -51,9 +52,10 @@ export async function terminalVerifyPin(employeeId: string, pin: string): Promis
       status: day.status,
       allowed: day.allowed,
       since: day.since ? fmtTime(day.since) : null,
-      workMinutes: day.summary.workMinutes,
+      workMinutes: day.summary.netWorkMinutes,
       breakMinutes: day.summary.breakMinutes,
-      missingBreakMinutes: day.summary.missingBreakMinutes,
+      deductedMinutes: day.summary.deductedMinutes,
+      staleNotice: day.stale ? "Du hast an einem früheren Tag nicht ausgestempelt. Bitte im Büro melden oder Korrekturantrag stellen." : null,
     },
   };
 }

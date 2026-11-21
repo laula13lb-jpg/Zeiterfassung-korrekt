@@ -34,14 +34,29 @@ export default async function MeinStart() {
           <div className="rounded-xl bg-blau-50 p-3"><dt className="text-sm font-semibold text-blau-800">Pause heute</dt><dd className="text-3xl font-black tabular-nums">{fmtMinutes(s.breakMinutes, false)}</dd></div>
           {s.firstStart && <div className="rounded-xl bg-blau-50 p-3"><dt className="text-sm font-semibold text-blau-800">Erste Stempelung</dt><dd className="text-3xl font-black tabular-nums">{fmtTime(s.firstStart)}</dd></div>}
         </dl>
-        {s.missingBreakMinutes > 0 && (
+        {day.stale && (
+          <p className="rounded-xl bg-red-50 p-3 font-semibold text-red-800 ring-2 ring-red-700">
+            Du hast an einem früheren Tag nicht ausgestempelt. Die Buchung wird beim nächsten Stempeln mit 0 Std. geschlossen –
+            bitte einen Korrekturantrag stellen oder im Büro melden.
+          </p>
+        )}
+        {s.deductedMinutes > 0 && (
+          <p className="rounded-xl bg-gelb-100 p-3 font-semibold ring-2 ring-gelb-500">
+            Pause nicht (vollständig) gestempelt: {s.deductedMinutes} Min. werden automatisch abgezogen
+            (vorgeschrieben: {s.requiredBreakMinutes} Min. Pause bei {fmtMinutes(s.workMinutes)} Arbeit).
+          </p>
+        )}
+        {s.deductedMinutes === 0 && s.missingBreakMinutes > 0 && (
           <p className="rounded-xl bg-gelb-100 p-3 font-semibold ring-2 ring-gelb-500">
             Hinweis Pausenregel: Bei {fmtMinutes(s.workMinutes)} Arbeitszeit sind mindestens {s.requiredBreakMinutes} Min. Pause vorgeschrieben
             (Blöcke ab 15 Min.). Es fehlen noch {s.missingBreakMinutes} Min.
-            {settings.missingBreakMode === "abzug" ? " Fehlende Pause wird nach dem Ausstempeln automatisch abgezogen." : ""}
           </p>
         )}
-        {s.deductedMinutes > 0 && <p className="text-sm">Automatisch abgezogen (fehlende Pause): {s.deductedMinutes} Min.</p>}
+        {s.notCreditedMinutes > 0 && (
+          <p className="text-base">
+            Vor {settings.creditFromTime} Uhr gearbeitet: {fmtMinutes(s.notCreditedMinutes)} – zählt nicht als Arbeitszeit/Überstunde.
+          </p>
+        )}
         {perm.allowed ? (
           <StampButtons allowed={day.allowed} />
         ) : (

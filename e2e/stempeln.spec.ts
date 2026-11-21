@@ -1,4 +1,7 @@
 import { test, type Page } from "@playwright/test";
+import { createHash } from "node:crypto";
+import { PrismaClient } from "@prisma/client";
+import { E2E_DATABASE_URL } from "./env";
 import { adminSession, enterPin, expect, formAlert, loginEmployee } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
@@ -7,6 +10,20 @@ async function terminalPick(page: Page, name: string, pin = "4711") {
   await page.getByRole("button", { name, exact: true }).click();
   await enterPin(page, pin);
   await page.getByRole("button", { name: "Weiter" }).click();
+}
+
+/** Freischaltcode TEST-2026 erneut gültig machen und dieses Browser-Profil als Terminal freischalten */
+async function activateTestTerminal(page: Page) {
+  const db = new PrismaClient({ datasources: { db: { url: E2E_DATABASE_URL } } });
+  await db.terminalDevice.updateMany({
+    where: { name: "Werkstatt-Tablet (Test)" },
+    data: { activationCodeHash: createHash("sha256").update("TEST-2026").digest("hex"), activationExpiresAt: new Date(Date.now() + 3600_000), active: true },
+  });
+  await db.$disconnect();
+  await page.goto("/terminal");
+  await page.getByLabel("Freischaltcode").fill("TEST-2026");
+  await page.getByRole("button", { name: "Terminal freischalten" }).click();
+  await expect(page.getByText("Bitte Namen antippen")).toBeVisible();
 }
 
 test.describe("Werkstatt-Terminal", () => {
@@ -53,6 +70,22 @@ test.describe("Werkstatt-Terminal", () => {
     await terminalPick(page, "Max Becker");
     await page.getByRole("button", { name: "Gehen" }).click();
     await expect(page.getByRole("status")).toContainText("Schönen Feierabend, Max – ausgestempelt");
+  });
+
+  test("Keine Nachtschicht: offene Buchung vom Vortag wird als vergessen markiert", async ({ page }) => {
+    const db = new PrismaClient({ datasources: { db: { url: E2E_DATABASE_URL } } });
+    const emp = await db.employee.findUniqueOrThrow({ where: { personnelNo: "1008" } }); // Kevin Schulz
+    const y = new Date(Date.now() - 24 * 3600_000);
+    const workDate = new Date(new Date(y.toLocaleString("en-US", { timeZone: "Europe/Berlin" })).toDateString() + " UTC");
+    await db.timeEntry.create({ data: { employeeId: emp.id, kind: "ARBEIT", start: y, workDate } });
+    await db.$disconnect();
+
+    await activateTestTerminal(page);
+    await terminalPick(page, "Kevin Schulz");
+    await expect(page.getByText(/an einem früheren Tag nicht ausgestempelt/)).toBeVisible();
+    await page.getByRole("button", { name: "Kommen" }).click();
+    await expect(page.getByRole("status")).toContainText("eingestempelt");
+    await expect(page.getByText(/wurde nicht ausgestempelt/)).toBeVisible();
   });
 
   test("Terminal-Gerät öffnet keine anderen Bereiche", async ({ page }) => {

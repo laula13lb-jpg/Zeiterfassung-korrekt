@@ -3,7 +3,6 @@ import type { StampSource } from "@prisma/client";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { berlinDay, fmtDateTime } from "@/lib/time";
-import { getSettings } from "@/modules/admin/settings";
 import { isDuplicate, isStale, planStamp, statusFromOpen, type StampType, type Status } from "./rules";
 
 export interface StampInput {
@@ -36,7 +35,6 @@ export async function performStamp(input: StampInput): Promise<StampResult> {
     if (at.getTime() > now.getTime() + 2 * 60_000) return { ok: false, error: "Zeitstempel liegt in der Zukunft." };
     if (now.getTime() - at.getTime() > MAX_OFFLINE_AGE_H * 3600_000) return { ok: false, error: "Zeitstempel ist zu alt – bitte Korrekturantrag stellen." };
   }
-  const settings = await getSettings();
 
   return db.$transaction(async (tx) => {
     // Zeilensperre: parallele Stempelungen derselben Person nacheinander abarbeiten
@@ -63,7 +61,7 @@ export async function performStamp(input: StampInput): Promise<StampResult> {
     }
 
     let autoClosedNotice: string | undefined;
-    if (open && isStale(open, at, settings.maxShiftHours)) {
+    if (open && isStale(open, berlinDay(at))) {
       // vergessenes Ausstempeln: Eintrag mit Dauer 0 schließen, Admin-Hinweis, Korrektur nötig
       await tx.timeEntry.update({ where: { id: open.id }, data: { end: open.start, autoClosed: true } });
       await tx.timeWarning.upsert({
@@ -72,7 +70,7 @@ export async function performStamp(input: StampInput): Promise<StampResult> {
         update: {},
       });
       await audit({ action: "time.auto_close", entityType: "TimeEntry", entityId: open.id, subjectId: emp.id,
-        before: { end: null }, after: { end: open.start, autoClosed: true }, reason: `Nicht ausgestempelt (älter als ${settings.maxShiftHours} Std.)` }, tx);
+        before: { end: null }, after: { end: open.start, autoClosed: true }, reason: "Nicht ausgestempelt (keine Nachtschichten – Buchung vom Vortag noch offen)" }, tx);
       autoClosedNotice = `Achtung: Am ${fmtDateTime(open.start).slice(0, 10)} wurde nicht ausgestempelt. Bitte Korrekturantrag stellen.`;
       open = null;
     }
@@ -89,8 +87,7 @@ export async function performStamp(input: StampInput): Promise<StampResult> {
           employeeId: emp.id,
           kind: plan.open,
           start: at,
-          // Fortsetzung einer Schicht (Pause/Ende Pause) bleibt am Arbeitstag des Schichtbeginns
-          workDate: open ? open.workDate : berlinDay(at),
+          workDate: berlinDay(at),
           origin: input.offline ? "OFFLINE" : "STEMPEL",
           departmentId: open?.departmentId ?? emp.departmentId,
         },

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   allowedStamps, breakDeduction, greeting, isDuplicate, isStale, planStamp, requiredBreak, statusFromOpen, summarizeDay, type EntryLike,
 } from "./rules";
-import { berlinDay, dayKey, fmtTime } from "@/lib/time";
+import { berlinDay, berlinTimeOn, dayKey, fmtTime } from "@/lib/time";
 
 /** Berliner Ortszeit → UTC-Date (für Tests mit fester Zeitzonenangabe) */
 const t = (iso: string) => new Date(iso);
@@ -63,7 +63,7 @@ describe("Tageszusammenfassung", () => {
     expect(s.netWorkMinutes).toBe(540);
   });
 
-  it("Fehlende Pause: Modus Hinweis zieht nichts ab, Modus Abzug schon", () => {
+  it("Fehlende Pause: Modus Hinweis zieht nichts ab, Modus Abzug (Standard) schon", () => {
     const e = [W("2026-03-03T07:00:00+01:00", "2026-03-03T15:00:00+01:00")];
     const h = summarizeDay(e, { mode: "hinweis" });
     expect(h.missingBreakMinutes).toBe(30);
@@ -95,18 +95,58 @@ describe("Tageszusammenfassung", () => {
     expect(s.missingBreakMinutes).toBe(0);
   });
 
-  it("Offener Eintrag zählt bis jetzt, kein Abzug solange offen", () => {
-    const s = summarizeDay([W("2026-03-06T07:00:00+01:00", null)], { now: t("2026-03-06T14:00:00+01:00"), mode: "abzug" });
+  it("Offener Eintrag zählt bis jetzt (Pausenabzug schon eingerechnet)", () => {
+    const s = summarizeDay([W("2026-03-06T07:00:00+01:00", null)], { now: t("2026-03-06T14:00:00+01:00") });
     expect(s.open).toBe(true);
     expect(s.workMinutes).toBe(420);
-    expect(s.deductedMinutes).toBe(0);
+    expect(s.deductedMinutes).toBe(30);
+    expect(s.netWorkMinutes).toBe(390);
   });
 
-  it("Schicht über Mitternacht gehört zum Starttag", () => {
-    const start = t("2026-06-12T22:00:00+02:00");
-    const s = summarizeDay([W("2026-06-12T22:00:00+02:00", "2026-06-13T05:00:00+02:00")]);
-    expect(s.workMinutes).toBe(420);
-    expect(dayKey(berlinDay(start))).toBe("2026-06-12");
+  it("Standard: nicht gestempelte Pause wird abgezogen", () => {
+    // Mo 7:00–15:45 ohne Pause gestempelt → 8:45 Std., 30 Min. Pflichtpause → 8:15 Std.
+    const s = summarizeDay([W("2026-03-09T07:00:00+01:00", "2026-03-09T15:45:00+01:00")]);
+    expect(s.deductedMinutes).toBe(30);
+    expect(s.netWorkMinutes).toBe(495);
+  });
+
+  it("Betriebliche Pausenregel: 45 Min. ab 6 Std.", () => {
+    const rule = { kind: "betrieblich", afterMinutes: 360, breakMinutes: 45 } as const;
+    const s = summarizeDay([W("2026-03-09T07:00:00+01:00", "2026-03-09T15:45:00+01:00")], { breakRule: rule });
+    expect(s.requiredBreakMinutes).toBe(45);
+    expect(s.netWorkMinutes).toBe(480); // 8:45 − 45 Min. = 8:00
+    // mit gestempelten 20 + 25 Min. kein Abzug
+    const ok = summarizeDay([
+      W("2026-03-09T07:00:00+01:00", "2026-03-09T09:00:00+01:00"),
+      P("2026-03-09T09:00:00+01:00", "2026-03-09T09:20:00+01:00"),
+      W("2026-03-09T09:20:00+01:00", "2026-03-09T12:30:00+01:00"),
+      P("2026-03-09T12:30:00+01:00", "2026-03-09T12:55:00+01:00"),
+      W("2026-03-09T12:55:00+01:00", "2026-03-09T15:45:00+01:00"),
+    ], { breakRule: rule });
+    expect(ok.deductedMinutes).toBe(0);
+    expect(ok.netWorkMinutes).toBe(480);
+  });
+
+  it("Zeit vor 6:00 Uhr wird nicht gutgeschrieben", () => {
+    const creditFrom = t("2026-03-10T06:00:00+01:00");
+    const s = summarizeDay([
+      W("2026-03-10T05:30:00+01:00", "2026-03-10T09:00:00+01:00"),
+      P("2026-03-10T09:00:00+01:00", "2026-03-10T09:20:00+01:00"),
+      W("2026-03-10T09:20:00+01:00", "2026-03-10T12:30:00+01:00"),
+      P("2026-03-10T12:30:00+01:00", "2026-03-10T12:55:00+01:00"),
+      W("2026-03-10T12:55:00+01:00", "2026-03-10T14:45:00+01:00"),
+    ], { creditFrom });
+    expect(s.workMinutes).toBe(510); // tatsächlich 8:30 (für ArbZG-Prüfungen)
+    expect(s.notCreditedMinutes).toBe(30);
+    expect(s.netWorkMinutes).toBe(480); // gutgeschrieben 8:00
+    // komplett vor 6 Uhr
+    const early = summarizeDay([W("2026-03-10T05:00:00+01:00", "2026-03-10T05:45:00+01:00")], { creditFrom });
+    expect(early.netWorkMinutes).toBe(0);
+  });
+
+  it("6:00 Uhr gilt in Sommer- und Winterzeit als Ortszeit", () => {
+    expect(berlinTimeOn(new Date("2026-07-01T00:00:00Z"), "06:00").toISOString()).toBe("2026-07-01T04:00:00.000Z");
+    expect(berlinTimeOn(new Date("2026-01-15T00:00:00Z"), "06:00").toISOString()).toBe("2026-01-15T05:00:00.000Z");
   });
 
   it("Sommerzeit-Umstellung (29.03.2026): 22:00–06:00 sind nur 7 echte Stunden", () => {
@@ -133,10 +173,10 @@ describe("Zeitzone Europe/Berlin", () => {
 });
 
 describe("Hilfsregeln", () => {
-  it("erkennt vergessenes Ausstempeln", () => {
-    const now = t("2026-03-10T07:00:00+01:00");
-    expect(isStale({ start: t("2026-03-09T07:00:00+01:00") }, now)).toBe(true);
-    expect(isStale({ start: t("2026-03-09T22:00:00+01:00") }, now)).toBe(false);
+  it("keine Nachtschichten: offene Buchung vom Vortag = vergessen auszustempeln", () => {
+    const today = berlinDay(t("2026-03-10T00:30:00+01:00"));
+    expect(isStale({ workDate: new Date("2026-03-09T00:00:00Z") }, today)).toBe(true);
+    expect(isStale({ workDate: new Date("2026-03-10T00:00:00Z") }, today)).toBe(false);
   });
   it("erkennt Doppeltippen", () => {
     const at = t("2026-03-10T07:00:00+01:00");

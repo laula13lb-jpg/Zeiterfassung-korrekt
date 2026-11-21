@@ -120,6 +120,7 @@ export function TerminalApp({ groups, serverNow, terminalName }: { groups: Group
             <br />
             <span className="text-xl opacity-90">Heute: {hm(screen.person.workMinutes)} Std. Arbeit · {hm(screen.person.breakMinutes)} Std. Pause</span>
           </p>
+          {screen.person.staleNotice && <p className="max-w-2xl rounded-xl bg-gelb-500 px-4 py-3 text-center text-xl font-bold text-blau-950">{screen.person.staleNotice}</p>}
           {error && <p role="alert" className="rounded-xl bg-red-100 px-4 py-3 text-lg font-bold text-red-800">{error}</p>}
           <div className="flex w-full max-w-3xl flex-wrap justify-center gap-4">
             {screen.person.allowed.map((t) => (
