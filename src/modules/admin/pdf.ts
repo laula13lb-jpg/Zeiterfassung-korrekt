@@ -24,7 +24,7 @@ export async function monthReportPdf(employeeId: string, year: number, month: nu
 
   // Kopf: Logo links, Titel rechts
   try {
-    doc.image(readFileSync(path.join(process.cwd(), "public", "logo.jpg")), 40, 34, { height: 56 });
+    doc.image(readFileSync(path.join(process.cwd(), "public", "logo.png")), 40, 34, { height: 56 });
   } catch {
     doc.fillColor(BLUE).font("Helvetica-Bold").fontSize(15).text("Autoklinik Bludau", 40, 50);
   }

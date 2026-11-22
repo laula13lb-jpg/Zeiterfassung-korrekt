@@ -4,10 +4,10 @@
  *   Netzausfälle zwischengespeichert. Andere Seiten mit persönlichen Daten werden NICHT gecacht.
  * - Kein Cache für API, Exporte und Server-Aktionen.
  */
-const VERSION = "bz-v1";
+const VERSION = "bz-v2";
 const STATIC = `${VERSION}-static`;
 const PAGES = `${VERSION}-pages`;
-const PRECACHE = ["/offline.html", "/logo.jpg", "/icons/icon-192.png", "/icons/icon-512.png"];
+const PRECACHE = ["/offline.html", "/logo.png", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(STATIC).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting()));
@@ -29,7 +29,7 @@ self.addEventListener("fetch", (e) => {
   if (url.pathname.startsWith("/api/")) return;
 
   // statische Build-Dateien und Bilder: Cache zuerst
-  if (url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/icons/") || url.pathname === "/logo.jpg") {
+  if (url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/icons/") || url.pathname === "/logo.png") {
     e.respondWith(
       caches.match(req).then((hit) => hit || fetch(req).then((res) => {
         if (res.ok) caches.open(STATIC).then((c) => c.put(req, res.clone()));
