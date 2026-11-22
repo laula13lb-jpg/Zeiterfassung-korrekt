@@ -38,6 +38,8 @@ export interface Settings {
   /** Ampelkonto-Grenzen in Stunden (Hinweis an Admin) */
   balanceYellowHours: number;
   balanceRedHours: number;
+  /** Mitarbeiter bestätigen den abgeschlossenen Monatsnachweis digital */
+  monthConfirmation: boolean;
   /** Admins müssen 2FA nutzen */
   requireAdmin2fa: boolean;
   /** Aufbewahrung in Jahren, danach Anonymisierung ausgetretener Mitarbeiter */
@@ -63,6 +65,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hideAbsenceReasonForColleagues: true,
   balanceYellowHours: 20,
   balanceRedHours: 40,
+  monthConfirmation: true,
   requireAdmin2fa: false,
   retentionYears: 10,
   minutesPerAw: 6,

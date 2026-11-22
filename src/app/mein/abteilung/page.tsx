@@ -10,6 +10,8 @@ import { CorrectionRequestList } from "@/components/CorrectionRequestList";
 import { AbsenceInbox } from "@/components/AbsenceInbox";
 import { AbsenceCalendar } from "@/components/AbsenceCalendar";
 import { MonthNav, parseMonth } from "@/components/MonthTable";
+import { presenceBoard } from "@/modules/zeiterfassung/presence";
+import { PresenceBoard } from "@/components/PresenceBoard";
 
 export const metadata = { title: "Meine Abteilung" };
 
@@ -20,7 +22,8 @@ export default async function Abteilung({ searchParams }: { searchParams: Promis
   const me = await db.employee.findUniqueOrThrow({ where: { id: emp.id }, include: { ledDepartments: true } });
   const deptIds = me.ledDepartments.map((d) => d.id);
   const scope = { employee: { departmentId: { in: deptIds } }, employeeId: { not: emp.id } };
-  const [corrections, absences, rows] = await Promise.all([
+  const [presence, corrections, absences, rows] = await Promise.all([
+    presenceBoard({ departmentIds: deptIds, showSickReason: false }),
     openCorrectionRequests(scope),
     openAbsenceRequests(scope),
     calendarRows({ from: new Date(Date.UTC(year, month - 1, 1)), to: new Date(Date.UTC(year, month, 0)), departmentIds: deptIds, viewer: "lead", viewerId: emp.id, hideReasonForColleagues: false, includePending: true }),
@@ -29,6 +32,8 @@ export default async function Abteilung({ searchParams }: { searchParams: Promis
     <div className="flex flex-col gap-5">
       <h1 className="text-3xl font-extrabold">Meine Abteilung</h1>
       <p>{me.ledDepartments.map((d) => d.name).join(", ")}</p>
+      <h2 className="text-xl font-bold">Anwesenheit heute</h2>
+      <PresenceBoard rows={presence} />
       <h2 className="text-xl font-bold">Urlaubs- und Abwesenheitsanträge</h2>
       <div className="max-w-3xl"><AbsenceInbox items={absences} action={decideAbsenceLead} /></div>
       <h2 className="text-xl font-bold">Korrekturanträge</h2>

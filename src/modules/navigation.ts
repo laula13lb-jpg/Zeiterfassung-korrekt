@@ -17,13 +17,13 @@ export function employeeNav(e: Pick<Employee, "roles">): NavItem[] {
 export function adminNav(): NavItem[] {
   return [
     { href: "/admin", label: "Übersicht" },
-    { href: "/admin/anwesenheit", label: "Anwesenheit", soon: true },
+    { href: "/admin/anwesenheit", label: "Anwesenheit" },
     { href: "/admin/postfach", label: "Anträge" },
     { href: "/admin/mitarbeiter", label: "Mitarbeiter" },
     { href: "/admin/zeiten", label: "Zeiten" },
     { href: "/admin/abwesenheiten", label: "Abwesenheiten" },
     { href: "/admin/krankheit", label: "Krankheit" },
-    { href: "/admin/auswertung", label: "Monatsabschluss & Export", soon: true },
+    { href: "/admin/auswertung", label: "Monatsabschluss & Export" },
     { href: "/admin/auftraege", label: "Aufträge", soon: true },
     { href: "/admin/kalender", label: "Feiertage" },
     { href: "/admin/terminals", label: "Terminals" },

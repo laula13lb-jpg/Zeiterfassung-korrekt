@@ -62,7 +62,12 @@ export interface DayAccount {
   holiday: string | null;
   labels: string[];
   sick: boolean;
+  childSick: boolean;
   vacationFraction: number;
+  /** Feiertag an einem geplanten Arbeitstag */
+  holidayOnWorkday: boolean;
+  /** angerechnete Abwesenheiten an diesem Tag (für Auswertungen/Lohnexport) */
+  absenceParts: { category: AbsenceCategory | "BETRIEBSFERIEN"; label: string; fraction: number }[];
 }
 
 const DAY_MS = 86_400_000;
@@ -92,6 +97,7 @@ export function computeDay(input: DayInput): DayAccount {
   let target = planned;
   let credited = 0;
   let vacationFraction = 0;
+  const absenceParts: DayAccount["absenceParts"] = [];
 
   if (holiday) {
     target = 0;
@@ -102,16 +108,22 @@ export function computeDay(input: DayInput): DayAccount {
     if (c.kind === "BETRIEBSFERIEN" && c.countsAsVacation) {
       credited += planned; // wird als Urlaub verrechnet
       vacationFraction = planned > 0 ? 1 : 0;
+      if (planned > 0) absenceParts.push({ category: "BETRIEBSFERIEN", label: c.name, fraction: 1 });
     } else {
       target = Math.round(planned * c.targetFactor);
     }
   }
 
   let sick = false;
+  let childSick = false;
   if (target > 0 && input.sick) {
     sick = true;
     labels.push(input.sick.label);
-    if (input.sick.childSick) target = 0;
+    if (input.sick.childSick) {
+      target = 0;
+      childSick = true;
+      sick = false;
+    }
     else credited = target; // Krankheit: volle Soll-Zeit gutgeschrieben, kein Urlaubsabzug
   } else if (target > 0) {
     for (const a of input.absences ?? []) {
@@ -121,6 +133,7 @@ export function computeDay(input: DayInput): DayAccount {
       else if (a.creditsTarget) credited += part;
       // Freizeitausgleich: Soll bleibt, keine Gutschrift → Saldo sinkt
       if (a.category === "URLAUB") vacationFraction += a.fraction;
+      absenceParts.push({ category: a.category, label: a.label, fraction: a.fraction });
     }
     credited = Math.min(credited, target);
   }
@@ -140,7 +153,10 @@ export function computeDay(input: DayInput): DayAccount {
     holiday,
     labels,
     sick,
+    childSick,
     vacationFraction,
+    holidayOnWorkday: !!holiday && planned > 0,
+    absenceParts,
   };
 }
 

@@ -3,7 +3,7 @@
 Web-App (PWA) für Arbeitszeiterfassung, Urlaub und Krankmeldungen der
 Autoklinik Bludau (Bludau GmbH, Braunschweig).
 
-**Stand:** Meilenstein 5 – Krankmeldungen (datensparsam), Rückbuchung von Urlaub bei Krankheit, Hinweise 6 Wochen/BEM, Abwesenheitsübersicht.
+**Stand:** Meilenstein 6 – Mitarbeiterverwaltung, Live-Anwesenheit, Monatsabschluss mit Bestätigung, Exporte (PDF-Monatsnachweis, Lohnliste CSV/Excel), Datenauskunft (DSGVO).
 
 | Bereich | Technik |
 |---|---|

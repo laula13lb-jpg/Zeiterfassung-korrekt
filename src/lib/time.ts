@@ -46,3 +46,6 @@ export function fmtMinutes(min: number, withUnit = true): string {
   const m = abs % 60;
   return `${sign}${h}:${String(m).padStart(2, "0")}${withUnit ? " Std." : ""}`;
 }
+
+const MONTHS = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+export const monthName = (y: number, m: number) => `${MONTHS[m - 1]} ${y}`;

@@ -4,6 +4,8 @@ import { fmtDate, fmtDateTime } from "@/lib/time";
 import { getMonthAccount } from "@/modules/zeiterfassung/account";
 import { withdrawCorrection } from "@/modules/zeiterfassung/correction-actions";
 import { MonthNav, MonthTable, parseMonth } from "@/components/MonthTable";
+import { ConfirmMonth } from "./ConfirmMonth";
+import { getSettings } from "@/modules/admin/settings";
 
 export const metadata = { title: "Meine Zeiten" };
 
@@ -12,6 +14,10 @@ const STATUS: Record<string, string> = { BEANTRAGT: "offen", GENEHMIGT: "genehmi
 export default async function MeineZeiten({ searchParams }: { searchParams: Promise<{ monat?: string }> }) {
   const emp = await requireEmployee();
   const { year, month } = parseMonth((await searchParams).monat);
+  const settings = await getSettings();
+  const ym = `${year}-${String(month).padStart(2, "0")}`;
+  const closing = await db.monthClosing.findUnique({ where: { employeeId_year_month: { employeeId: emp.id, year, month } } });
+  const closed = closing && !closing.reopenedAt;
   const [acc, requests, changes] = await Promise.all([
     getMonthAccount(emp.id, year, month),
     db.correctionRequest.findMany({ where: { employeeId: emp.id }, orderBy: { createdAt: "desc" }, take: 10 }),
@@ -29,7 +35,20 @@ export default async function MeineZeiten({ searchParams }: { searchParams: Prom
         <h1 className="text-3xl font-extrabold">Meine Zeiten</h1>
         <MonthNav year={year} month={month} base="/mein/zeiten" />
       </div>
-      <MonthTable acc={acc} dayLink={(d) => `/mein/zeiten/korrektur?datum=${d}`} linkLabel="Korrektur" />
+      <div className="flex flex-wrap items-center gap-3">
+        {closed ? (
+          <span className="rounded-full bg-green-700 px-3 py-1 font-bold text-white">Monat abgeschlossen am {fmtDate(closing.closedAt)}</span>
+        ) : (
+          <span className="rounded-full bg-blau-100 px-3 py-1 font-bold">Monat offen</span>
+        )}
+        <a href={`/api/export/monatsnachweis?monat=${ym}`} className="btn btn-ghost min-h-11 px-4 text-base">Monatsnachweis (PDF)</a>
+      </div>
+      {closed && settings.monthConfirmation && (
+        closing.employeeConfirmedAt
+          ? <p className="font-semibold text-green-800">Von dir bestätigt am {fmtDate(closing.employeeConfirmedAt)}.</p>
+          : <ConfirmMonth monat={ym} />
+      )}
+      <MonthTable acc={acc} dayLink={closed ? undefined : (d) => `/mein/zeiten/korrektur?datum=${d}`} linkLabel="Korrektur" />
 
       <section className="card">
         <h2 className="mb-2 text-xl font-bold">Meine Korrekturanträge</h2>

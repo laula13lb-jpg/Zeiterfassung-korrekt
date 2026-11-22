@@ -6,6 +6,8 @@ import { requireAdmin } from "@/modules/auth/guards";
 import { fmtHm } from "@/modules/zeiterfassung/blocks";
 import { ScheduleForm, AccountStartForm } from "./ScheduleForm";
 import { EntitlementForm } from "./EntitlementForm";
+import { AccessForms } from "./AccessForms";
+import { EmployeeForm } from "@/components/EmployeeForm";
 import { getSettings } from "@/modules/admin/settings";
 import { entitlementFor, vacationOverview } from "@/modules/abwesenheit/vacation";
 import { VacationSummary } from "@/components/VacationSummary";
@@ -17,20 +19,40 @@ const DAYS = [["mon", "Mo"], ["tue", "Di"], ["wed", "Mi"], ["thu", "Do"], ["fri"
 export default async function MitarbeiterDetail({ params }: { params: Promise<{ id: string }> }) {
   await requireAdmin();
   const { id } = await params;
-  const emp = await db.employee.findUnique({ where: { id }, include: { department: true, schedules: { orderBy: { validFrom: "desc" } } } });
+  const emp = await db.employee.findUnique({ where: { id }, include: { department: true, ledDepartments: { select: { id: true } }, schedules: { orderBy: { validFrom: "desc" } } } });
   if (!emp) notFound();
   const latest = emp.schedules[0];
   const settings = await getSettings();
   const thisYear = berlinDay().getUTCFullYear();
   const ents = await Promise.all([thisYear, thisYear + 1].map(async (y) => ({ y, e: await entitlementFor(emp, y, settings) })));
   const ov = await vacationOverview(emp.id, thisYear);
+  const depts = await db.department.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true } });
+  const STATUS: Record<string, string> = { AKTIV: "aktiv", GESPERRT: "gesperrt", AUSGETRETEN: "ausgetreten" };
+  const pinLocked = !!emp.pinLockedUntil && emp.pinLockedUntil > new Date();
   const defaults = Object.fromEntries(DAYS.map(([k]) => [k, fmtHm(latest ? (latest[`${k}Minutes` as keyof typeof latest] as number) : k === "fri" ? 420 : ["sat", "sun"].includes(k) ? 0 : 480)]));
   return (
     <div className="flex max-w-3xl flex-col gap-5">
       <Link href="/admin/mitarbeiter" className="font-semibold underline">← Mitarbeiterliste</Link>
       <h1 className="text-3xl font-extrabold">{emp.firstName} {emp.lastName}</h1>
-      <p>Pers.-Nr. {emp.personnelNo} · {emp.department?.name ?? "ohne Abteilung"} · Eintritt {fmtDate(emp.entryDate)}</p>
-      <Link href={`/admin/zeiten?mitarbeiter=${emp.id}`} className="btn btn-ghost self-start">Zeiten & Zeitkonto ansehen</Link>
+      <p>Pers.-Nr. {emp.personnelNo} · {emp.department?.name ?? "ohne Abteilung"} · Eintritt {fmtDate(emp.entryDate)}{emp.exitDate ? ` · Austritt ${fmtDate(emp.exitDate)}` : ""} · Status: <b data-testid="status">{STATUS[emp.status]}</b>{pinLocked ? " (PIN vorübergehend gesperrt)" : ""}</p>
+      <div className="flex flex-wrap gap-3">
+        <Link href={`/admin/zeiten?mitarbeiter=${emp.id}`} className="btn btn-ghost">Zeiten & Zeitkonto ansehen</Link>
+        <a href={`/api/export/datenauskunft?mitarbeiter=${emp.id}`} className="btn btn-ghost">Datenauskunft (DSGVO) herunterladen</a>
+      </div>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-xl font-bold">Stammdaten & Rollen</h2>
+        <EmployeeForm depts={depts} initial={{
+          id: emp.id, personnelNo: emp.personnelNo, firstName: emp.firstName, lastName: emp.lastName, email: emp.email ?? "",
+          departmentId: emp.departmentId ?? "", entryDate: dayKey(emp.entryDate), tracksTime: emp.tracksTime,
+          lead: emp.roles.includes("ABTEILUNGSLEITER"), admin: emp.roles.includes("ADMIN"), leadOf: emp.ledDepartments.map((d) => d.id), loginName: emp.loginName ?? "",
+        }} />
+      </section>
+
+      <section className="card flex flex-col gap-3">
+        <h2 className="text-xl font-bold">Zugang & Status</h2>
+        <AccessForms id={emp.id} status={emp.status} isAdmin={emp.roles.includes("ADMIN")} exitDate={emp.exitDate ? dayKey(emp.exitDate) : null} locked={pinLocked} />
+      </section>
 
       <section className="card flex flex-col gap-3">
         <h2 className="text-xl font-bold">Arbeitszeitmodell</h2>

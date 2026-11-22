@@ -68,3 +68,13 @@ export const WARNING_LABEL: Record<WarningType, string> = {
   RUHEZEIT_UNTER_11: "Ruhezeit unter 11 Std.",
   NICHT_AUSGESTEMPELT: "Nicht ausgestempelt",
 };
+
+/** Austritte mit Datum in der Vergangenheit umsetzen (Zugang sperren, Daten bleiben erhalten) */
+export async function applyExits(now = new Date()) {
+  const today = berlinDay(now);
+  const due = await db.employee.findMany({ where: { status: { not: "AUSGETRETEN" }, exitDate: { lt: today } }, select: { id: true } });
+  for (const e of due) {
+    await db.employee.update({ where: { id: e.id }, data: { status: "AUSGETRETEN" } });
+    await db.session.deleteMany({ where: { employeeId: e.id } });
+  }
+}

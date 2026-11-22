@@ -98,7 +98,7 @@ test("Saldo-Buchung und Arbeitszeitmodell", async ({ page }) => {
   await page.getByRole("row", { name: /Becker, Max/ }).getByRole("link", { name: "Details" }).click();
   await page.getByLabel("gültig ab").fill("2027-01-01");
   await page.getByLabel("Stunden Fr").fill("6:00");
-  await page.getByRole("button", { name: "Speichern" }).first().click();
+  await page.locator("form").filter({ has: page.getByLabel("gültig ab") }).getByRole("button", { name: "Speichern" }).click();
   await expect(page.getByText("Arbeitszeitmodell gespeichert.")).toBeVisible();
   await page.reload();
   await expect(page.getByRole("row", { name: /01\.01\.2027/ })).toContainText("38:00");
