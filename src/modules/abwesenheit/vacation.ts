@@ -97,13 +97,16 @@ export async function vacationOverview(employeeId: string, year: number, today =
     db.companyDay.findMany({ where: { kind: "BETRIEBSFERIEN", countsAsVacation: true, date: { gte: from, lte: to } } }),
   ]);
   const sick = await db.sickLeave.findMany({ where: { employeeId, cancelledAt: null, startDate: { lte: to }, endDate: { gte: from } } });
-  const isSick = (d: Date) => sick.some((s) => s.startDate <= d && s.endDate >= d);
+  const isSick = (d: Date) => sick.some((s) => !s.childSick && s.startDate <= d && s.endDate >= d);
+  // Krankheit während genehmigtem Urlaub: Urlaubstage werden erst nach Admin-Bestätigung zurückgebucht
+  const refunded = (d: Date) => sick.some((s) => !s.childSick && s.vacationRefundConfirmedAt && s.startDate <= d && s.endDate >= d);
 
   const takenByYear = new Map<number, { day: Date; days: number }[]>();
   const pendingByYear = new Map<number, number>();
   for (const r of requests) {
     for (const x of expandRange({ start: r.startDate, end: r.endDate, halfDayStart: r.halfDayStart, halfDayEnd: r.halfDayEnd }, factor)) {
       const y = x.day.getUTCFullYear();
+      if (r.status !== "BEANTRAGT" && refunded(x.day)) continue;
       if (r.status === "BEANTRAGT") pendingByYear.set(y, (pendingByYear.get(y) ?? 0) + x.days);
       else (takenByYear.get(y) ?? takenByYear.set(y, []).get(y)!).push(x);
     }

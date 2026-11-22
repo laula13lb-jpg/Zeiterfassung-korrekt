@@ -53,6 +53,10 @@ describe("Soll/Ist pro Tag", () => {
       absences: [{ label: "Urlaub", category: "URLAUB", creditsTarget: true, fraction: 1 }] });
     expect(r).toMatchObject({ creditedMinutes: 480, diffMinutes: 0, sick: true, vacationFraction: 0 });
   });
+  it("Kind krank: Soll entfällt, keine Gutschrift, kein Minus", () => {
+    const r = computeDay({ ...base, day: d("2026-03-10"), workedMinutes: 0, sick: { label: "Kind krank", childSick: true } });
+    expect(r).toMatchObject({ targetMinutes: 0, creditedMinutes: 0, diffMinutes: 0 });
+  });
   it("Krankheit am Wochenende/Feiertag ändert nichts", () => {
     const r = computeDay({ ...base, day: d("2026-03-14"), workedMinutes: 0, sick: { label: "Krank" } });
     expect(r).toMatchObject({ targetMinutes: 0, creditedMinutes: 0, sick: false });

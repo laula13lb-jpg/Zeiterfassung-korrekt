@@ -7,7 +7,7 @@ export function employeeNav(e: Pick<Employee, "roles">): NavItem[] {
     { href: "/mein", label: "Heute" },
     { href: "/mein/zeiten", label: "Meine Zeiten" },
     { href: "/mein/urlaub", label: "Urlaub" },
-    { href: "/mein/krank", label: "Krankmeldung", soon: true },
+    { href: "/mein/krank", label: "Krankmeldung" },
   ];
   if (e.roles.includes("ABTEILUNGSLEITER")) items.push({ href: "/mein/abteilung", label: "Meine Abteilung" });
   items.push({ href: "/mein/auftraege", label: "Aufträge", soon: true }, { href: "/mein/pin", label: "PIN ändern" });
@@ -22,6 +22,7 @@ export function adminNav(): NavItem[] {
     { href: "/admin/mitarbeiter", label: "Mitarbeiter" },
     { href: "/admin/zeiten", label: "Zeiten" },
     { href: "/admin/abwesenheiten", label: "Abwesenheiten" },
+    { href: "/admin/krankheit", label: "Krankheit" },
     { href: "/admin/auswertung", label: "Monatsabschluss & Export", soon: true },
     { href: "/admin/auftraege", label: "Aufträge", soon: true },
     { href: "/admin/kalender", label: "Feiertage" },

@@ -40,7 +40,8 @@ export interface DayInput {
   employmentEnd: Date | null;
   companyDay?: CompanyDayLike | null;
   absences?: AbsenceOnDay[];
-  sick?: { label: string } | null;
+  /** childSick: Kind krank – Soll entfällt (Kinderkrankengeld der Krankenkasse), keine Gutschrift */
+  sick?: { label: string; childSick?: boolean } | null;
   /** angerechnete Arbeitszeit aus Stempelungen (nach Pausenabzug / Anrechnungsbeginn) */
   workedMinutes: number;
   /** Tagessumme auf volle N Minuten abrunden (0 = keine Rundung) */
@@ -110,7 +111,8 @@ export function computeDay(input: DayInput): DayAccount {
   if (target > 0 && input.sick) {
     sick = true;
     labels.push(input.sick.label);
-    credited = target; // Krankheit: volle Soll-Zeit gutgeschrieben, kein Urlaubsabzug
+    if (input.sick.childSick) target = 0;
+    else credited = target; // Krankheit: volle Soll-Zeit gutgeschrieben, kein Urlaubsabzug
   } else if (target > 0) {
     for (const a of input.absences ?? []) {
       const part = Math.round(target * a.fraction);

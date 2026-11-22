@@ -395,6 +395,10 @@ model SickLeave {
   childSick     Boolean   @default(false)
   createdById   String?
   createdBy     Employee? @relation("SickCreator", fields: [createdById], references: [id])
+  /// Krankheit während genehmigtem Urlaub: Urlaubstage nach Admin-Bestätigung zurückgebucht (§ 9 BUrlG)
+  vacationRefundConfirmedAt DateTime?
+  vacationRefundConfirmedById String?
+  cancelReason  String?
   cancelledAt   DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

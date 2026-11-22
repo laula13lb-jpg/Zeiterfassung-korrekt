@@ -93,7 +93,7 @@ async function computeDays(employeeId: string, until: Date, settings: Settings, 
       employmentEnd: emp.exitDate,
       companyDay: cdMap.get(k) ?? null,
       absences: abs,
-      sick: s ? { label: s.childSick ? "Kind krank" : "Krank" } : null,
+      sick: s ? { label: s.childSick ? "Kind krank" : "Krank", childSick: s.childSick } : null,
       workedMinutes: summary?.netWorkMinutes ?? 0,
       roundingMinutes: settings.roundingMinutes,
     });

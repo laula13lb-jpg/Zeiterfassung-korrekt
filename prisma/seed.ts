@@ -179,6 +179,12 @@ async function sampleAbsences() {
   const kevin = await by("1008");
   await db.absenceRequest.create({ data: { employeeId: piotr.id, typeId: urlaub.id, startDate: monday(3), endDate: plus(monday(3), 4), days: workdays(monday(3), plus(monday(3), 4)), status: "GENEHMIGT" } });
   await db.absenceRequest.create({ data: { employeeId: max.id, typeId: urlaub.id, startDate: monday(5), endDate: plus(monday(5), 4), days: workdays(monday(5), plus(monday(5), 4)), status: "BEANTRAGT", comment: "Familienbesuch" } });
+  // Krankheit: längere Episode (Hinweise 6 Wochen / BEM) und kurze Krankmeldung
+  const jonas = await by("1004");
+  const lena = await by("1006");
+  const y = t.getFullYear();
+  await db.sickLeave.create({ data: { employeeId: jonas.id, startDate: new Date(Date.UTC(y, 4, 4)), endDate: new Date(Date.UTC(y, 5, 15)), auPresent: true, eauRetrieved: true } });
+  await db.sickLeave.create({ data: { employeeId: lena.id, startDate: plus(monday(-1), 1), endDate: plus(monday(-1), 2), auPresent: true } });
   // Übernahme aus altem System: 3 Tage Resturlaub
   await db.vacationEntitlement.update({ where: { employeeId_year: { employeeId: kevin.id, year: t.getFullYear() } }, data: { carryOverOverride: 3, note: "Übernahme aus bisheriger Liste" } });
 }

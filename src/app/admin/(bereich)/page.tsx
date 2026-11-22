@@ -5,14 +5,16 @@ import { fmtDate } from "@/lib/time";
 import { getSettings } from "@/modules/admin/settings";
 import { resolveWarning } from "@/modules/zeiterfassung/correction-actions";
 import { WARNING_LABEL } from "@/modules/zeiterfassung/warnings";
+import { absentToday, pendingVacationRefunds } from "@/modules/abwesenheit/sick";
 
 export const metadata = { title: "Verwaltung" };
 
 export default async function AdminStart() {
   const { employee } = await requireAdmin();
-  const [active, openRequests, warnings, settings] = await Promise.all([
+  const [active, openCorr, openAbs, warnings, settings, absent, refunds] = await Promise.all([
     db.employee.count({ where: { status: "AKTIV", tracksTime: true } }),
     db.correctionRequest.count({ where: { status: "BEANTRAGT" } }),
+    db.absenceRequest.count({ where: { status: { in: ["BEANTRAGT", "STORNO_BEANTRAGT"] } } }),
     db.timeWarning.findMany({
       where: { resolvedAt: null },
       include: { employee: { select: { id: true, firstName: true, lastName: true } } },
@@ -20,7 +22,10 @@ export default async function AdminStart() {
       take: 50,
     }),
     getSettings(),
+    absentToday(),
+    pendingVacationRefunds(),
   ]);
+  const openRequests = openCorr + openAbs;
   return (
     <div className="flex flex-col gap-5">
       <h1 className="text-3xl font-extrabold">Übersicht</h1>
@@ -35,6 +40,15 @@ export default async function AdminStart() {
         <Link href="/admin/postfach" className="card hover:ring-2 hover:ring-blau-700"><div className="text-sm font-semibold uppercase text-blau-800">Offene Anträge</div><div className="text-4xl font-black">{openRequests}</div></Link>
         <div className="card"><div className="text-sm font-semibold uppercase text-blau-800">Stempeln vom Handy</div><div className="text-2xl font-black">{settings.stampFromPersonalDevices ? "erlaubt" : "nur Terminal"}</div></div>
       </div>
+      <section className="card">
+        <h2 className="mb-2 text-xl font-bold">Heute abwesend ({absent.length})</h2>
+        {absent.length === 0 ? <p>Niemand.</p> : (
+          <ul className="grid gap-1 sm:grid-cols-2" data-testid="heute-abwesend">
+            {absent.map((a, i) => <li key={i}><b>{a.name}</b> – {a.reason} (bis {a.until.split("-").reverse().join(".")})</li>)}
+          </ul>
+        )}
+        {refunds.length > 0 && <p className="mt-2 font-semibold"><Link href="/admin/krankheit" className="underline">{refunds.length} Krankmeldung(en) während Urlaub prüfen →</Link></p>}
+      </section>
       <section className="card">
         <h2 className="mb-2 text-xl font-bold">Hinweise Arbeitszeitgesetz ({warnings.length})</h2>
         {warnings.length === 0 ? <p>Keine offenen Hinweise.</p> : (
