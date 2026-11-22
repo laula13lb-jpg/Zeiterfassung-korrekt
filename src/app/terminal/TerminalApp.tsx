@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { Clock } from "@/components/Clock";
+import { Logo } from "@/components/Brand";
 import { PinPad } from "@/components/PinPad";
-import { terminalStamp, terminalVerifyPin, type TerminalPerson } from "@/modules/zeiterfassung/terminal-actions";
+import { terminalOfflineSync, terminalStamp, terminalVerifyPin, type TerminalPerson } from "@/modules/zeiterfassung/terminal-actions";
+import { dequeue, enqueue, listQueue } from "@/lib/offline-queue";
 import { STAMP_LABEL, type StampType } from "@/modules/zeiterfassung/rules";
 
 type Group = { name: string; people: { id: string; name: string }[] };
@@ -11,7 +13,8 @@ type Screen =
   | { s: "start" }
   | { s: "pin"; id: string; name: string }
   | { s: "actions"; person: TerminalPerson }
-  | { s: "done"; message: string; notice?: string; type: StampType };
+  | { s: "offline"; id: string; name: string }
+  | { s: "done"; message: string; notice?: string; type: StampType; offline?: boolean };
 
 const IDLE_MS = 30_000;
 const DONE_MS = 5_000;
@@ -31,8 +34,53 @@ export function TerminalApp({ groups, serverNow, terminalName }: { groups: Group
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // für Offline-Erfassung: PIN und Person bis zum Abschluss merken (nur im Arbeitsspeicher)
+  const carry = useRef<{ id: string; name: string; pin: string } | null>(null);
+  const [offset] = useState(() => serverNow - Date.now());
+  const [queued, setQueued] = useState(0);
+  const syncing = useRef(false);
+
+  const sync = useCallback(async () => {
+    if (syncing.current) return;
+    syncing.current = true;
+    try {
+      for (const item of await listQueue()) {
+        try {
+          await terminalOfflineSync(item);
+          await dequeue(item.clientId);
+        } catch {
+          break; // weiterhin offline → später erneut
+        }
+      }
+    } finally {
+      setQueued((await listQueue().catch(() => [])).length);
+      syncing.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    sync();
+    const id = setInterval(sync, 20_000);
+    window.addEventListener("online", sync);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("online", sync);
+    };
+  }, [sync]);
+
+  const saveOffline = async (type: StampType) => {
+    const p = carry.current;
+    if (!p) return reset();
+    const at = Date.now() + offset;
+    await enqueue({ clientId: crypto.randomUUID(), employeeId: p.id, name: p.name, pin: p.pin, type, at });
+    carry.current = null;
+    setQueued((q) => q + 1);
+    const t = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" }).format(at);
+    setScreen({ s: "done", type, offline: true, message: `${p.name.split(" ")[0]} – ${STAMP_LABEL[type]} ${t} offline gespeichert` });
+  };
 
   const reset = useCallback(() => {
+    carry.current = null;
     setScreen({ s: "start" });
     setPin("");
     setError(null);
@@ -47,9 +95,18 @@ export function TerminalApp({ groups, serverNow, terminalName }: { groups: Group
 
   const submitPin = () => {
     if (screen.s !== "pin" || pin.length < 4) return;
-    const id = screen.id;
+    const { id, name } = screen;
+    carry.current = { id, name, pin };
     start(async () => {
-      const r = await terminalVerifyPin(id, pin);
+      let r;
+      try {
+        r = await terminalVerifyPin(id, pin);
+      } catch {
+        // keine Verbindung → Offline-Erfassung (PIN wird bei der Übertragung geprüft)
+        setPin("");
+        setError(null);
+        return setScreen({ s: "offline", id, name });
+      }
       setPin("");
       if (!r.ok) return setError(r.error);
       setError(null);
@@ -61,8 +118,14 @@ export function TerminalApp({ groups, serverNow, terminalName }: { groups: Group
     if (screen.s !== "actions") return;
     const token = screen.person.token;
     start(async () => {
-      const r = await terminalStamp(token, type, crypto.randomUUID());
+      let r;
+      try {
+        r = await terminalStamp(token, type, crypto.randomUUID());
+      } catch {
+        return saveOffline(type);
+      }
       if (!r.ok) return setError(r.error);
+      carry.current = null;
       setError(null);
       setScreen({ s: "done", message: r.message, notice: r.notice, type });
     });
@@ -73,7 +136,7 @@ export function TerminalApp({ groups, serverNow, terminalName }: { groups: Group
       {screen.s === "start" && (
         <div className="flex flex-1 flex-col gap-6 p-6 lg:flex-row">
           <div className="flex flex-col items-center justify-center gap-2 text-center lg:w-2/5">
-            <div className="mb-4 rounded-xl bg-gelb-500 px-4 py-1 text-lg font-black text-blau-950">Autoklinik Bludau</div>
+            <Logo height={120} className="mb-4" />
             <Clock serverNow={serverNow} className="text-7xl lg:text-8xl" />
             <p className="mt-6 text-2xl font-semibold text-gelb-400">Bitte Namen antippen</p>
           </div>
@@ -133,6 +196,23 @@ export function TerminalApp({ groups, serverNow, terminalName }: { groups: Group
         </div>
       )}
 
+      {screen.s === "offline" && (
+        <div className="flex flex-1 flex-col items-center justify-center gap-6 p-6 text-center">
+          <h1 className="text-4xl font-extrabold">Hallo {screen.name.split(" ")[0]}!</h1>
+          <p role="alert" className="max-w-2xl rounded-xl bg-gelb-500 px-4 py-3 text-xl font-bold text-blau-950">
+            Keine Verbindung zum Server. Deine Stempelung wird mit der aktuellen Uhrzeit gespeichert und automatisch nachgereicht.
+          </p>
+          <div className="flex w-full max-w-3xl flex-wrap justify-center gap-4">
+            {(["KOMMEN", "PAUSE_START", "PAUSE_ENDE", "GEHEN"] as StampType[]).map((t) => (
+              <button key={t} type="button" onClick={() => saveOffline(t)} className={`btn min-h-28 w-full text-3xl sm:w-[22rem] ${STYLE[t]}`}>
+                {STAMP_LABEL[t]}
+              </button>
+            ))}
+          </div>
+          <button type="button" onClick={reset} className="btn min-h-16 bg-blau-700 px-10 text-white">Abbrechen</button>
+        </div>
+      )}
+
       {screen.s === "done" && (
         <button type="button" onClick={reset} className="flex flex-1 flex-col items-center justify-center gap-6 p-6 text-center">
           <div aria-hidden className={`grid h-32 w-32 place-items-center rounded-full text-7xl ${STYLE[screen.type]}`}>✓</div>
@@ -142,7 +222,12 @@ export function TerminalApp({ groups, serverNow, terminalName }: { groups: Group
         </button>
       )}
 
-      <footer className="px-4 pb-2 text-right text-xs opacity-50">{terminalName}</footer>
+      <footer className="flex justify-between px-4 pb-2 text-xs">
+        <span className={queued ? "rounded bg-gelb-500 px-2 py-0.5 font-bold text-blau-950" : ""} data-testid="warteschlange">
+          {queued ? `${queued} Stempelung(en) warten auf Übertragung` : ""}
+        </span>
+        <span className="opacity-50">{terminalName}</span>
+      </footer>
     </main>
   );
 }

@@ -4,7 +4,7 @@ import { adminNav } from "@/modules/navigation";
 import { NavShell } from "@/components/NavShell";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { employee } = await requireAdmin();
+  const { employee } = await requireAdmin({ allowMissing2fa: true });
   return (
     <NavShell title="Verwaltung" user={`${employee.firstName} ${employee.lastName}`} items={adminNav()} logout={logoutAdmin}>
       {children}

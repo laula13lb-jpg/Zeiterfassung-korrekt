@@ -34,9 +34,11 @@ export function middleware(req: NextRequest) {
   res.headers.set("X-Frame-Options", "DENY");
   res.headers.set("Permissions-Policy", "geolocation=(), camera=(), microphone=(), payment=()");
   res.headers.set("Cross-Origin-Opener-Policy", "same-origin");
+  // HSTS nur bei HTTPS-Betrieb (hinter Caddy)
+  if (req.headers.get("x-forwarded-proto") === "https") res.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   return res;
 }
 
 export const config = {
-  matcher: [{ source: "/((?!_next/static|_next/image|favicon.ico|icons/).*)" }],
+  matcher: [{ source: "/((?!_next/static|_next/image|favicon.ico|icons/|sw.js|offline.html|logo.jpg|manifest.webmanifest).*)" }],
 };

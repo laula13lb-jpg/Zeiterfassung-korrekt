@@ -130,7 +130,7 @@ export async function verifyAdminTotp(_prev: FormState, fd: FormData): Promise<F
 }
 
 export async function changeAdminPassword(_prev: FormState, fd: FormData): Promise<FormState> {
-  const { employee: emp } = await requireAdmin({ allowPasswordChange: true });
+  const { employee: emp } = await requireAdmin({ allowPasswordChange: true, allowMissing2fa: true });
   const current = String(fd.get("currentPassword") ?? "");
   const next = String(fd.get("newPassword") ?? "");
   const repeat = String(fd.get("repeatPassword") ?? "");
@@ -147,7 +147,7 @@ export async function changeAdminPassword(_prev: FormState, fd: FormData): Promi
 
 /** Schritt 1: neuen TOTP-Schlüssel erzeugen (noch nicht aktiv) */
 export async function startTotpSetup(): Promise<void> {
-  const { employee: emp } = await requireAdmin({ allowPasswordChange: false });
+  const { employee: emp } = await requireAdmin({ allowMissing2fa: true });
   if (emp.totpEnabled) return;
   const secret = authenticator.generateSecret(20);
   await db.employee.update({ where: { id: emp.id }, data: { totpSecretEnc: encrypt(secret) } });
@@ -156,7 +156,7 @@ export async function startTotpSetup(): Promise<void> {
 
 /** Schritt 2: Code aus der Authenticator-App bestätigen → 2FA aktiv */
 export async function confirmTotpSetup(_prev: FormState, fd: FormData): Promise<FormState> {
-  const { employee: emp } = await requireAdmin();
+  const { employee: emp } = await requireAdmin({ allowMissing2fa: true });
   if (!emp.totpSecretEnc) return { error: "Bitte zuerst die Einrichtung starten." };
   const code = str(fd, "code").replace(/\s/g, "");
   if (!authenticator.check(code, decrypt(emp.totpSecretEnc))) return { error: "Code stimmt nicht. Uhrzeit am Handy prüfen und erneut versuchen." };

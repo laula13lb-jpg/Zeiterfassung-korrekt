@@ -74,3 +74,20 @@ export async function saveMinStaffing(_prev: ActionState, fd: FormData): Promise
   revalidatePath("/admin/einstellungen");
   return { ok: "Gespeichert." };
 }
+
+export async function savePrivacySettings(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  const { employee: admin } = await requireAdmin();
+  const before = await getSettings();
+  const years = Number(str(fd, "retentionYears"));
+  if (!(Number.isInteger(years) && years >= 2 && years <= 15)) return { error: "Aufbewahrung: 2–15 Jahre (Arbeitszeitnachweise mind. 2 Jahre, § 16 ArbZG)." };
+  const after = {
+    retentionYears: years,
+    requireAdmin2fa: fd.get("requireAdmin2fa") === "on",
+    monthConfirmation: fd.get("monthConfirmation") === "on",
+  };
+  if (after.requireAdmin2fa && !admin.totpEnabled) return { error: "Bitte richten Sie zuerst für Ihren eigenen Zugang 2FA ein (Mein Zugang)." };
+  for (const [k, v] of Object.entries(after)) await setSetting(k as keyof typeof after, v as never, admin.id);
+  await audit({ actorId: admin.id, action: "settings.privacy", entityType: "AppSetting", before: Object.fromEntries(Object.keys(after).map((k) => [k, before[k as keyof typeof before]])), after, ip: await clientIp() });
+  revalidatePath("/admin/einstellungen");
+  return { ok: "Gespeichert." };
+}

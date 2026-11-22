@@ -3,7 +3,7 @@ import { requireAdmin } from "@/modules/auth/guards";
 import { getSettings } from "@/modules/admin/settings";
 import { StampSettingsForm } from "./StampSettingsForm";
 import { RoundingForm } from "./RoundingForm";
-import { AbsenceTypes, MinStaffingForm, VacationSettingsForm } from "./AbsenceSettings";
+import { AbsenceTypes, MinStaffingForm, PrivacySettingsForm, VacationSettingsForm } from "./AbsenceSettings";
 
 export const metadata = { title: "Einstellungen" };
 
@@ -22,6 +22,7 @@ export default async function Einstellungen() {
       <VacationSettingsForm s={s} />
       <MinStaffingForm depts={depts} />
       <AbsenceTypes types={types} />
+      <PrivacySettingsForm s={s} />
       <p className="text-sm">Feiertage und Betriebstage: Menüpunkt „Feiertage“.</p>
     </div>
   );

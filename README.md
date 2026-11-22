@@ -3,7 +3,7 @@
 Web-App (PWA) für Arbeitszeiterfassung, Urlaub und Krankmeldungen der
 Autoklinik Bludau (Bludau GmbH, Braunschweig).
 
-**Stand:** Meilenstein 6 – Mitarbeiterverwaltung, Live-Anwesenheit, Monatsabschluss mit Bestätigung, Exporte (PDF-Monatsnachweis, Lohnliste CSV/Excel), Datenauskunft (DSGVO).
+**Stand:** Meilenstein 7 – PWA (installierbar, Offline-Stempeln am Terminal), Löschfristen/Anonymisierung, 2FA-Pflicht, Dokumentation, Vorbereitung Auftragsmodul. Nächster Schritt: Installation auf dem Server (Meilenstein 8).
 
 | Bereich | Technik |
 |---|---|
@@ -12,6 +12,17 @@ Autoklinik Bludau (Bludau GmbH, Braunschweig).
 | Sicherheit | Argon2id (PIN/Passwort), TOTP-2FA, HttpOnly/SameSite-Cookies, CSP, Rate-Limit |
 | Tests | Vitest (Logik), Playwright (Abläufe, Smartphone + Tablet quer) |
 | Betrieb | `docker compose` (App, Datenbank, tägliches Backup) |
+
+## Dokumentation (`docs/`)
+
+| Datei | Inhalt |
+|---|---|
+| `bedienung-mitarbeiter.md` | 1-Seiten-Anleitung für Mitarbeiter |
+| `bedienung-admin.md` | Anleitung für Büro/Geschäftsführung |
+| `verarbeitungsverzeichnis.md` | **Entwurf** Verzeichnis der Verarbeitungstätigkeiten (Art. 30 DSGVO) |
+| `mitarbeiterinformation-art13.md` | **Entwurf** Mitarbeiterinformation (Art. 13 DSGVO) |
+| `sicherheit.md` | Sicherheitskonzept (Kurzfassung) |
+| `modul-auftraege.md` | vorgesehene Erweiterung „Arbeitsaufträge“ (Carisma, AW-Soll/Ist) |
 
 ## Ordnerstruktur
 

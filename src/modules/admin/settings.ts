@@ -42,7 +42,7 @@ export interface Settings {
   monthConfirmation: boolean;
   /** Admins müssen 2FA nutzen */
   requireAdmin2fa: boolean;
-  /** Aufbewahrung in Jahren, danach Anonymisierung ausgetretener Mitarbeiter */
+  /** Aufbewahrung in Jahren nach Ende des Austrittsjahres, danach Anonymisierung ausgetretener Mitarbeiter */
   retentionYears: number;
   /** [AUFTRAEGE] Minuten pro Arbeitswert (AW) – häufig 6 (10 AW = 1 Std.) oder 5 */
   minutesPerAw: number;
@@ -67,7 +67,7 @@ export const DEFAULT_SETTINGS: Settings = {
   balanceRedHours: 40,
   monthConfirmation: true,
   requireAdmin2fa: false,
-  retentionYears: 10,
+  retentionYears: 6,
   minutesPerAw: 6,
 };
 

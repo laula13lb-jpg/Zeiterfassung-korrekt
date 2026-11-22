@@ -76,3 +76,47 @@ export async function terminalStamp(token: string, type: StampType, clientId: st
     notice: res.autoClosedNotice,
   };
 }
+
+/**
+ * Nachsynchronisation einer offline erfassten Stempelung (Original-Zeitstempel).
+ * Rückgabe "retry" = später erneut versuchen; "drop" = endgültig (Erfolg oder dauerhafter Fehler).
+ */
+export async function terminalOfflineSync(item: {
+  clientId: string;
+  employeeId: string;
+  pin: string;
+  type: StampType;
+  at: number;
+}): Promise<{ result: "ok" | "drop"; message?: string }> {
+  const terminal = await currentTerminal();
+  if (!terminal) return { result: "drop", message: "Terminal nicht freigeschaltet" };
+  const ip = await clientIp();
+  const already = await db.stampEvent.findUnique({ where: { clientId: item.clientId } });
+  if (already) return { result: "ok" };
+  const emp = await db.employee.findUnique({ where: { id: item.employeeId } });
+  const check = await checkPin(emp, item.pin, { ip, kind: "TERMINAL_PIN", identifier: item.employeeId });
+  let error: string | null = null;
+  if (!check.ok) error = check.error;
+  else {
+    const r = await performStamp({
+      employeeId: item.employeeId, type: item.type, at: new Date(item.at), offline: true,
+      source: "TERMINAL", terminalId: terminal.id, clientId: item.clientId, ip,
+    });
+    if (!r.ok) error = r.error;
+  }
+  if (error) {
+    // dauerhaft fehlgeschlagen → Verwaltung informieren, damit die Zeit korrigiert werden kann
+    const admins = await db.employee.findMany({ where: { status: "AKTIV", roles: { has: "ADMIN" } }, select: { id: true } });
+    const who = emp ? `${emp.firstName} ${emp.lastName}` : "Unbekannt";
+    await db.notification.createMany({
+      data: admins.map((a) => ({
+        employeeId: a.id,
+        title: `Offline-Stempelung nicht übernommen: ${who}, ${new Date(item.at).toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}`,
+        body: error,
+        link: "/admin/zeiten",
+      })),
+    });
+    return { result: "drop", message: error };
+  }
+  return { result: "ok" };
+}

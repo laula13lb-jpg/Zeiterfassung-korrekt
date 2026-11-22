@@ -22,11 +22,15 @@ export async function requireEmployee(opts: { allowPinChange?: boolean } = {}) {
   return s.employee;
 }
 
-export async function requireAdmin(opts: { allowPasswordChange?: boolean; allowPending2fa?: boolean } = {}) {
+export async function requireAdmin(opts: { allowPasswordChange?: boolean; allowPending2fa?: boolean; allowMissing2fa?: boolean } = {}) {
   const s = await getSession("ADMIN");
   if (!s || !hasRole(s.employee, "ADMIN")) redirect("/admin/anmelden");
   if (s.pending2fa && !opts.allowPending2fa) redirect("/admin/anmelden/2fa");
   if (s.employee.passwordMustChange && !opts.allowPasswordChange) redirect("/admin/passwort-aendern");
+  if (!s.employee.totpEnabled && !opts.allowMissing2fa) {
+    const { getSettings } = await import("@/modules/admin/settings");
+    if ((await getSettings()).requireAdmin2fa) redirect("/admin/sicherheit?pflicht=1");
+  }
   return { employee: s.employee, session: s };
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { saveAbsenceType, saveMinStaffing, saveVacationSettings } from "@/modules/admin/absence-settings";
+import { saveAbsenceType, saveMinStaffing, savePrivacySettings, saveVacationSettings } from "@/modules/admin/absence-settings";
 import type { Settings } from "@/modules/admin/settings";
 import { FormMessage } from "@/components/FormMessage";
 import { KeepForm } from "@/components/KeepForm";
@@ -76,6 +76,22 @@ export function MinStaffingForm({ depts }: { depts: { id: string; name: string; 
         <label key={d.id} className="flex items-center gap-3"><span className="w-56 font-semibold">{d.name}</span>
           <input name={`min_${d.id}`} defaultValue={d.minStaffing ?? ""} inputMode="numeric" aria-label={`Mindestbesetzung ${d.name}`} className="field min-h-11 w-24" /> Personen</label>
       ))}
+      <button disabled={pending} className="btn btn-primary self-start">Speichern</button>
+    </KeepForm>
+  );
+}
+
+export function PrivacySettingsForm({ s }: { s: Settings }) {
+  const [state, action, pending] = useActionState(savePrivacySettings, undefined);
+  return (
+    <KeepForm action={action} className="card flex flex-col gap-4">
+      <h2 className="text-xl font-bold">Datenschutz & Sicherheit</h2>
+      <FormMessage state={state} />
+      <label><span className="mb-1 block font-semibold">Aufbewahrung nach Austritt (Jahre nach Ende des Austrittsjahres)</span>
+        <input name="retentionYears" defaultValue={s.retentionYears} inputMode="numeric" className="field max-w-32" />
+        <span className="text-sm">Danach werden ausgetretene Mitarbeiter automatisch anonymisiert und Krankmeldungen gelöscht. Arbeitszeitnachweise mindestens 2 Jahre (§ 16 ArbZG), Lohnunterlagen i. d. R. 6–8 Jahre – bitte mit Steuerberater abstimmen.</span></label>
+      <label className="flex items-center gap-3"><input type="checkbox" name="monthConfirmation" defaultChecked={s.monthConfirmation} className="h-6 w-6 accent-blau-800" />Mitarbeiter bestätigen den abgeschlossenen Monatsnachweis digital</label>
+      <label className="flex items-center gap-3"><input type="checkbox" name="requireAdmin2fa" defaultChecked={s.requireAdmin2fa} className="h-6 w-6 accent-blau-800" />Zwei-Faktor-Anmeldung für alle Admins vorschreiben (empfohlen)</label>
       <button disabled={pending} className="btn btn-primary self-start">Speichern</button>
     </KeepForm>
   );

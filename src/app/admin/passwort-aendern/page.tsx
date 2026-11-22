@@ -5,7 +5,7 @@ import { PasswordForm } from "./PasswordForm";
 export const metadata = { title: "Passwort ändern" };
 
 export default async function PasswortAendern() {
-  const { employee } = await requireAdmin({ allowPasswordChange: true });
+  const { employee } = await requireAdmin({ allowPasswordChange: true, allowMissing2fa: true });
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-6 p-4 sm:p-6">
       <header className="rounded-2xl bg-blau-800 p-4 text-white"><Brand subtitle="Passwort ändern" /></header>

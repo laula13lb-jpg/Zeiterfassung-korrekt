@@ -13,6 +13,15 @@ async function terminalPick(page: Page, name: string, pin = "4711") {
 }
 
 /** Freischaltcode TEST-2026 erneut gültig machen und dieses Browser-Profil als Terminal freischalten */
+async function resetTestCode() {
+  const db = new PrismaClient({ datasources: { db: { url: E2E_DATABASE_URL } } });
+  await db.terminalDevice.updateMany({
+    where: { name: "Werkstatt-Tablet (Test)" },
+    data: { activationCodeHash: createHash("sha256").update("TEST-2026").digest("hex"), activationExpiresAt: new Date(Date.now() + 3600_000), active: true },
+  });
+  await db.$disconnect();
+}
+
 async function activateTestTerminal(page: Page) {
   const db = new PrismaClient({ datasources: { db: { url: E2E_DATABASE_URL } } });
   await db.terminalDevice.updateMany({
@@ -30,6 +39,7 @@ test.describe("Werkstatt-Terminal", () => {
   test.beforeEach(({}, info) => test.skip(info.project.name !== "tablet-quer", "Terminal wird auf dem Tablet quer getestet"));
 
   test("Freischalten, Kommen, Pause, Pause Ende, Gehen", async ({ page }) => {
+    await resetTestCode();
     await page.goto("/terminal");
     await page.getByLabel("Freischaltcode").fill("FALSCH-00");
     await page.getByRole("button", { name: "Terminal freischalten" }).click();

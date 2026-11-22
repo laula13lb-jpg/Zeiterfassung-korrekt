@@ -4,12 +4,13 @@ import { authenticator } from "otplib";
 import { requireAdmin } from "@/modules/auth/guards";
 import { startTotpSetup } from "@/modules/auth/actions";
 import { decrypt } from "@/lib/crypto";
+import { getSettings } from "@/modules/admin/settings";
 import { ConfirmTotpForm, DisableTotpForm } from "./TotpForms";
 
 export const metadata = { title: "Mein Zugang" };
 
 export default async function Sicherheit() {
-  const { employee } = await requireAdmin();
+  const { employee } = await requireAdmin({ allowMissing2fa: true });
   let qr: string | null = null;
   let secret: string | null = null;
   if (!employee.totpEnabled && employee.totpSecretEnc) {
@@ -20,6 +21,9 @@ export default async function Sicherheit() {
   return (
     <div className="flex max-w-xl flex-col gap-5">
       <h1 className="text-3xl font-extrabold">Mein Zugang</h1>
+      {!employee.totpEnabled && (await getSettings()).requireAdmin2fa && (
+        <p role="alert" className="rounded-xl bg-red-50 p-3 font-semibold text-red-800 ring-2 ring-red-700">Für Admins ist die Zwei-Faktor-Anmeldung vorgeschrieben. Bitte jetzt einrichten – vorher sind die anderen Bereiche gesperrt.</p>
+      )}
       <section className="card flex flex-col gap-3">
         <h2 className="text-xl font-bold">Zwei-Faktor-Anmeldung (2FA)</h2>
         {employee.totpEnabled ? (

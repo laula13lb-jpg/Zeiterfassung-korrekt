@@ -1,4 +1,6 @@
 import "server-only";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import PDFDocument from "pdfkit";
 import { fmtDateTime, fmtMinutes, fmtTime, monthName } from "@/lib/time";
 import { getMonthAccount } from "@/modules/zeiterfassung/account";
@@ -20,11 +22,15 @@ export async function monthReportPdf(employeeId: string, year: number, month: nu
   doc.on("data", (c: Buffer) => chunks.push(c));
   const done = new Promise<Buffer>((res) => doc.on("end", () => res(Buffer.concat(chunks))));
 
-  // Kopf
-  doc.rect(40, 40, 515, 46).fill(BLUE);
-  doc.fillColor("#ffcc00").font("Helvetica-Bold").fontSize(15).text("Autoklinik Bludau", 52, 50);
-  doc.fillColor("#ffffff").font("Helvetica").fontSize(9).text("Bludau GmbH · Wodanstraße 38 · 38106 Braunschweig", 52, 69);
-  doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(13).text(`Monatsnachweis ${monthName(year, month)}`, 300, 56, { width: 245, align: "right" });
+  // Kopf: Logo links, Titel rechts
+  try {
+    doc.image(readFileSync(path.join(process.cwd(), "public", "logo.jpg")), 40, 34, { height: 56 });
+  } catch {
+    doc.fillColor(BLUE).font("Helvetica-Bold").fontSize(15).text("Autoklinik Bludau", 40, 50);
+  }
+  doc.rect(130, 40, 425, 46).fill(BLUE);
+  doc.fillColor("#ffcc00").font("Helvetica-Bold").fontSize(13).text(`Monatsnachweis ${monthName(year, month)}`, 140, 50, { width: 405, align: "right" });
+  doc.fillColor("#ffffff").font("Helvetica").fontSize(9).text("Bludau GmbH · Wodanstraße 38 · 38106 Braunschweig", 140, 69, { width: 405, align: "right" });
 
   doc.fillColor("#000000").font("Helvetica").fontSize(10);
   doc.text(`Name: ${s.firstName} ${s.lastName}`, 40, 100);
