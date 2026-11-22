@@ -27,6 +27,8 @@ export interface Settings {
   forgotClockOutTime: string;
   /** Standard-Urlaubsanspruch (Tage/Jahr bei 5-Tage-Woche) */
   defaultVacationDays: number;
+  /** Resturlaub verfällt zum Stichtag (sonst unbegrenzter Übertrag) */
+  vacationExpiry: boolean;
   /** Verfall Resturlaub Vorjahr (MM-TT) */
   carryOverExpiry: string;
   /** Hinweis auf verfallenden Urlaub so viele Tage vorher */
@@ -55,6 +57,7 @@ export const DEFAULT_SETTINGS: Settings = {
   roundingMinutes: 0,
   forgotClockOutTime: "22:00",
   defaultVacationDays: 30,
+  vacationExpiry: true,
   carryOverExpiry: "03-31",
   carryOverWarnDays: 60,
   hideAbsenceReasonForColleagues: true,

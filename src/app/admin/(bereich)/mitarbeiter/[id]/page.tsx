@@ -5,6 +5,11 @@ import { dayKey, fmtDate } from "@/lib/time";
 import { requireAdmin } from "@/modules/auth/guards";
 import { fmtHm } from "@/modules/zeiterfassung/blocks";
 import { ScheduleForm, AccountStartForm } from "./ScheduleForm";
+import { EntitlementForm } from "./EntitlementForm";
+import { getSettings } from "@/modules/admin/settings";
+import { entitlementFor, vacationOverview } from "@/modules/abwesenheit/vacation";
+import { VacationSummary } from "@/components/VacationSummary";
+import { berlinDay } from "@/lib/time";
 
 export const metadata = { title: "Mitarbeiter" };
 const DAYS = [["mon", "Mo"], ["tue", "Di"], ["wed", "Mi"], ["thu", "Do"], ["fri", "Fr"], ["sat", "Sa"], ["sun", "So"]] as const;
@@ -15,6 +20,10 @@ export default async function MitarbeiterDetail({ params }: { params: Promise<{ 
   const emp = await db.employee.findUnique({ where: { id }, include: { department: true, schedules: { orderBy: { validFrom: "desc" } } } });
   if (!emp) notFound();
   const latest = emp.schedules[0];
+  const settings = await getSettings();
+  const thisYear = berlinDay().getUTCFullYear();
+  const ents = await Promise.all([thisYear, thisYear + 1].map(async (y) => ({ y, e: await entitlementFor(emp, y, settings) })));
+  const ov = await vacationOverview(emp.id, thisYear);
   const defaults = Object.fromEntries(DAYS.map(([k]) => [k, fmtHm(latest ? (latest[`${k}Minutes` as keyof typeof latest] as number) : k === "fri" ? 420 : ["sat", "sun"].includes(k) ? 0 : 480)]));
   return (
     <div className="flex max-w-3xl flex-col gap-5">
@@ -43,6 +52,14 @@ export default async function MitarbeiterDetail({ params }: { params: Promise<{ 
           </table>
         )}
         <ScheduleForm employeeId={emp.id} defaults={defaults} />
+      </section>
+
+      <section className="card flex flex-col gap-3">
+        <h2 className="text-xl font-bold">Urlaub</h2>
+        <VacationSummary ov={ov} />
+        {ents.map(({ y, e }) => (
+          <EntitlementForm key={y} employeeId={emp.id} year={y} days={e.days} carry={e.carryOverOverride} note={e.note} computed={e.computed} />
+        ))}
       </section>
 
       <section className="card flex flex-col gap-3">

@@ -368,6 +368,11 @@ model AbsenceRequest {
   decidedBy      Employee?     @relation("AbsenceDecider", fields: [decidedById], references: [id])
   decidedAt      DateTime?
   decisionReason String?
+  /// Stornierung eines genehmigten Antrags: angefragt am / Grund
+  cancelRequestedAt DateTime?
+  cancelReason      String?
+  /// von Admin direkt eingetragen (ohne Antrag)
+  createdById    String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 

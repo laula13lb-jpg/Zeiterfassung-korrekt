@@ -10,6 +10,7 @@ import { PrismaClient, type Role } from "@prisma/client";
 import { hash } from "@node-rs/argon2";
 import { createHash } from "node:crypto";
 import { TZDate } from "@date-fns/tz";
+import { holidayName } from "../src/modules/zeiterfassung/holidays";
 
 const db = new PrismaClient();
 const OPTS = { memoryCost: 19456, timeCost: 2, parallelism: 1 } as const;
@@ -156,6 +157,32 @@ async function sampleTimes() {
   await db.employee.updateMany({ where: { timeAccountStart: null }, data: { timeAccountStart: new Date(Date.UTC(t.getFullYear(), t.getMonth(), t.getDate())) } });
 }
 
+/** Beispiel-Urlaube: genehmigt, beantragt, Übernahme Resturlaub */
+async function sampleAbsences() {
+  if (await db.absenceRequest.count()) return;
+  const urlaub = await db.absenceType.findUniqueOrThrow({ where: { code: "URLAUB" } });
+  const t = new TZDate(Date.now(), "Europe/Berlin");
+  const monday = (weeks: number) => {
+    const d = new Date(Date.UTC(t.getFullYear(), t.getMonth(), t.getDate() + weeks * 7));
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+    return d;
+  };
+  const plus = (d: Date, n: number) => new Date(d.getTime() + n * 86_400_000);
+  const by = async (no: string) => db.employee.findUniqueOrThrow({ where: { personnelNo: no } });
+  const workdays = (a: Date, b: Date) => {
+    let n = 0;
+    for (let d = a; d <= b; d = plus(d, 1)) if (d.getUTCDay() % 6 !== 0 && !holidayName(d.toISOString().slice(0, 10))) n++;
+    return n;
+  };
+  const piotr = await by("1007");
+  const max = await by("1003");
+  const kevin = await by("1008");
+  await db.absenceRequest.create({ data: { employeeId: piotr.id, typeId: urlaub.id, startDate: monday(3), endDate: plus(monday(3), 4), days: workdays(monday(3), plus(monday(3), 4)), status: "GENEHMIGT" } });
+  await db.absenceRequest.create({ data: { employeeId: max.id, typeId: urlaub.id, startDate: monday(5), endDate: plus(monday(5), 4), days: workdays(monday(5), plus(monday(5), 4)), status: "BEANTRAGT", comment: "Familienbesuch" } });
+  // Übernahme aus altem System: 3 Tage Resturlaub
+  await db.vacationEntitlement.update({ where: { employeeId_year: { employeeId: kevin.id, year: t.getFullYear() } }, data: { carryOverOverride: 3, note: "Übernahme aus bisheriger Liste" } });
+}
+
 /** Test-Terminal mit festem Freischaltcode TEST-2026 (nur Entwicklung) */
 async function testTerminal() {
   if (await db.terminalDevice.count()) return;
@@ -175,6 +202,7 @@ async function main() {
   const depts = await base();
   await demo(depts);
   await sampleTimes();
+  await sampleAbsences();
   await testTerminal();
   console.log(`Testdaten angelegt.
   Mitarbeiter-PIN (alle):  ${DEMO_PIN}   (Personalnummer 1010 „Neu Testperson“: Start-PIN 5308, muss geändert werden)
